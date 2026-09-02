@@ -7,6 +7,7 @@ import net.fabricmc.fabric.api.client.command.v2.FabricClientCommandSource
 import net.fabricmc.fabric.api.client.rendering.v1.hud.HudElementRegistry
 import net.minecraft.ChatFormatting
 import net.minecraft.client.Minecraft
+import net.minecraft.client.gui.screens.inventory.AbstractContainerScreen
 import net.minecraft.client.multiplayer.ClientPacketListener
 import net.minecraft.client.multiplayer.PlayerInfo
 import net.minecraft.network.chat.Component
@@ -15,6 +16,8 @@ import net.minecraft.network.chat.MutableComponent
 import net.minecraft.network.chat.Style
 import net.minecraft.network.chat.TextColor
 import net.minecraft.resources.Identifier
+import net.minecraft.world.item.Item
+import net.minecraft.world.item.TooltipFlag
 import org.slf4j.LoggerFactory
 import java.io.File
 import java.time.LocalDateTime
@@ -61,6 +64,10 @@ object ForgeCast : ClientModInitializer {
 					.then(
 						LiteralArgumentBuilder.literal<FabricClientCommandSource>("toggle")
 							.executes { context -> toggleHud(context.source) }
+					)
+					.then(
+						LiteralArgumentBuilder.literal<FabricClientCommandSource>("dumpgui")
+							.executes { context -> dumpGui(context.source) }
 					)
 			)
 		}
@@ -260,6 +267,90 @@ object ForgeCast : ClientModInitializer {
 		logger.info("Wrote {} tab list entries to {}", entries.size, target.absolutePath)
 		source.sendFeedback(
 			Component.literal("ForgeCast: wrote ${entries.size} entries to $DUMP_DIR_NAME/${target.name}")
+		)
+		return 1
+	}
+
+	// -------------------------------------------------- /forgecast dumpgui
+
+	/**
+	 * Writes every slot of the currently open container screen, with each
+	 * item's full tooltip, to a timestamped file.
+	 *
+	 * Read-only: nothing is clicked and nothing is sent to the server. Same
+	 * philosophy as the tab-list dump - capture now, work out the format later.
+	 */
+	private fun dumpGui(source: FabricClientCommandSource): Int {
+		val client = Minecraft.getInstance()
+
+		val screen = client.screen
+		if (screen !is AbstractContainerScreen<*>) {
+			source.sendError(
+				Component.literal(
+					"ForgeCast: no container screen is open. Open the Forge (or any chest GUI) and run this again."
+				)
+			)
+			return 0
+		}
+
+		val level = client.level
+		val player = client.player
+		if (level == null || player == null) {
+			source.sendError(Component.literal("ForgeCast: not in a world."))
+			return 0
+		}
+
+		// Tooltips are generated the same way the game generates them for the
+		// hover text, so what lands in the file is what Hypixel actually sends.
+		val tooltipContext = Item.TooltipContext.of(level)
+		val tooltipFlag = TooltipFlag.NORMAL
+
+		val now = LocalDateTime.now()
+		val dir = File(client.gameDirectory, DUMP_DIR_NAME)
+		dir.mkdirs()
+		val target = File(dir, "gui-${now.format(FILE_STAMP)}.txt")
+
+		val slots = screen.menu.slots
+		val out = StringBuilder()
+		out.append("ForgeCast GUI dump\n")
+		out.append("taken\t").append(now).append('\n')
+		out.append("screen\t").append(toLegacyString(screen.title)).append('\n')
+		out.append("screenClass\t").append(screen.javaClass.simpleName).append('\n')
+		out.append("slots\t").append(slots.size).append('\n')
+		out.append("format\tslot<TAB>index<TAB>count<TAB>rawName   and   tip<TAB>index<TAB>rawLine\n")
+		out.append("--\n")
+
+		var occupied = 0
+		slots.forEachIndexed { index, slot ->
+			val stack = slot.item
+			if (stack.isEmpty) {
+				out.append("slot\t").append(index).append("\t0\t<empty>\n")
+				return@forEachIndexed
+			}
+			occupied++
+			out.append("slot\t").append(index).append('\t')
+				.append(stack.count).append('\t')
+				.append(toLegacyString(stack.hoverName)).append('\n')
+
+			// Defensive: an item with odd data should not lose the whole dump.
+			val lines = runCatching { stack.getTooltipLines(tooltipContext, player, tooltipFlag) }
+				.getOrElse { error ->
+					out.append("tiperror\t").append(index).append('\t').append(error).append('\n')
+					emptyList()
+				}
+			for (line in lines) {
+				out.append("tip\t").append(index).append('\t')
+					.append(toLegacyString(line)).append('\n')
+			}
+		}
+
+		target.writeText(out.toString(), Charsets.UTF_8)
+
+		logger.info("Wrote {} GUI slots ({} occupied) to {}", slots.size, occupied, target.absolutePath)
+		source.sendFeedback(
+			Component.literal(
+				"ForgeCast: wrote $occupied occupied of ${slots.size} slots to $DUMP_DIR_NAME/${target.name}"
+			)
 		)
 		return 1
 	}
