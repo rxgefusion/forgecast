@@ -83,7 +83,10 @@ object ForgeCast : ClientModInitializer {
 		// A container GUI swallows the keyboard, so /forgecast dumpgui can never
 		// be typed while one is open. Capture on a tick instead; the command
 		// then writes whatever was last seen.
-		ClientTickEvents.END_CLIENT_TICK.register { client -> captureOpenGui(client) }
+		ClientTickEvents.END_CLIENT_TICK.register { client ->
+			captureOpenGui(client)
+			checkForgeAdvice(client)
+		}
 
 		logger.info("ForgeCast ready - dump, status, toggle and dumpgui are registered")
 	}
@@ -97,6 +100,53 @@ object ForgeCast : ClientModInitializer {
 			)
 		)
 		return 1
+	}
+
+	// ------------------------------------------------- incomplete-data advice
+
+	private val adviceThrottle = AdviceThrottle()
+	private var lastAdviceCheckMs = 0L
+	private const val ADVICE_INTERVAL_MS = 1_000L
+
+	/**
+	 * Tells the player once when the forge data is incomplete, and how to fix
+	 * it.
+	 *
+	 * Runs independently of the HUD toggle: the reading is either trustworthy
+	 * or it is not, regardless of whether the panel happens to be shown.
+	 */
+	private fun checkForgeAdvice(client: Minecraft) {
+		val now = System.currentTimeMillis()
+		if (now - lastAdviceCheckMs < ADVICE_INTERVAL_MS) return
+		lastAdviceCheckMs = now
+
+		val connection = client.connection
+		val address = client.currentServer?.ip
+		if (connection == null || address == null || !address.lowercase().contains("hypixel")) {
+			adviceThrottle.reset()
+			return
+		}
+
+		val rows = readTabRows(connection)
+
+		// Only SkyBlock's tab list carries a Profile row. Without one we are in
+		// a lobby or another game mode, where none of this advice applies.
+		if (ProfileReader.profileOf(rows) == null) {
+			adviceThrottle.reset()
+			return
+		}
+
+		val snapshot = ForgeParser.parse(rows)
+		val case = ForgeAdvice.classify(rows, snapshot)
+		val toAnnounce = adviceThrottle.announce(case) ?: return
+		val lines = ForgeAdvice.message(toAnnounce, snapshot.renderedSlots) ?: return
+
+		val player = client.player ?: return
+		for (line in lines) {
+			player.sendSystemMessage(
+				prefix().append(Component.literal(line).withStyle(ChatFormatting.GRAY))
+			)
+		}
 	}
 
 	// ------------------------------------------------------- reading the game
