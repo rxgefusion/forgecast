@@ -31,4 +31,4 @@ To run a development client:
 
 Licensed under the GNU Lesser General Public License v3.0. See [LICENSE](LICENSE).
 
-Copyright (C) 2026 CowgirlFraust
+Copyright (C) 2026 Fraust

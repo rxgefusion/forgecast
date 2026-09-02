@@ -5,7 +5,7 @@
 	"name": "ForgeCast",
 	"description": "Fabric mod for Hypixel SkyBlock, written in Kotlin. Not a Forge mod, despite the name.",
 	"authors": [
-		"gamer"
+		"Fraust"
 	],
 	"license": "LGPL-3.0-only",
 	"environment": "client",
@@ -13,7 +13,7 @@
 		"client": [
 			{
 				"adapter": "kotlin",
-				"value": "dev.cowgirlfraust.forgecast.ForgeCast"
+				"value": "dev.fraust.forgecast.ForgeCast"
 			}
 		]
 	},

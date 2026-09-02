@@ -1,4 +1,4 @@
-package dev.cowgirlfraust.forgecast
+package dev.fraust.forgecast
 
 import com.mojang.brigadier.builder.LiteralArgumentBuilder
 import net.fabricmc.api.ClientModInitializer
