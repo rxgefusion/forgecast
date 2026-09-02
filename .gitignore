@@ -11,7 +11,8 @@ remappedSrc/
 # IDE
 .idea/
 *.iml
-.vscode/
+# .vscode/ - Loom generates launch configs here, keep them
+!.vscode/launch.json
 .settings/
 .classpath
 .project
