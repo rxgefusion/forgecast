@@ -1,0 +1,45 @@
+ForgeCast GUI dump
+captured	2026-09-02T05:04:49.327437400
+screen	The Forge
+screenClass	ContainerScreen
+slots	90
+format	slot<TAB>index<TAB>count<TAB>rawName   and   tip<TAB>index<TAB>rawLine
+--
+slot	10	1	§6Refined Titanium
+tip	10	§6Refined Titanium
+tip	10	§7Currently making: §6Refined Titanium
+tip	10	§7Time Remaining: §a8h 46m 2s
+slot	11	1	§6Refined Titanium
+tip	11	§6Refined Titanium
+tip	11	§7Currently making: §6Refined Titanium
+tip	11	§7Time Remaining: §a7h 35m 36s
+slot	12	1	§aSlot #3
+tip	12	§aSlot #3
+tip	12	§7View and start forge processes
+tip	12	§7using the materials that you have.
+tip	12	
+tip	12	§eClick to select a process!
+slot	13	1	§9Bejeweled Handle
+tip	13	§9Bejeweled Handle
+tip	13	§7Currently making: §9Bejeweled Handle
+tip	13	§7Time Remaining: §aCompleted!
+tip	13	
+tip	13	§eClick to claim!
+slot	14	1	§aSlot #5
+tip	14	§aSlot #5
+tip	14	§7View and start forge processes
+tip	14	§7using the materials that you have.
+tip	14	
+tip	14	§eClick to select a process!
+slot	15	1	§aSlot #6
+tip	15	§aSlot #6
+tip	15	§7View and start forge processes
+tip	15	§7using the materials that you have.
+tip	15	
+tip	15	§eClick to select a process!
+slot	16	1	§aSlot #7
+tip	16	§aSlot #7
+tip	16	§7View and start forge processes
+tip	16	§7using the materials that you have.
+tip	16	
+tip	16	§eClick to select a process!
