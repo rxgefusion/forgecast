@@ -50,6 +50,11 @@ object ForgeAdvice {
 				ForgeDataCase.TRUNCATED
 			}
 		}
+		// No widget rows at all means the whole widget system is off, not that
+		// the columns are full. Reporting "pushed out" here would send the
+		// player looking for a crowding problem that does not exist.
+		if (rows.none { it.profileName.startsWith("!") }) return ForgeDataCase.WIDGET_OFF
+
 		// No section. Was there room for one?
 		return if (spareRows(rows) > 0) ForgeDataCase.WIDGET_OFF else ForgeDataCase.PUSHED_OUT
 	}

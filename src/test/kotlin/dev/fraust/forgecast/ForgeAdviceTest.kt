@@ -88,6 +88,21 @@ class ForgeAdviceTest {
 	}
 
 	@Test
+	fun `no widget rows at all reads as the widget system being off`() {
+		// Every row is a real player: the tab-list widgets are switched off
+		// entirely. Calling that "pushed out" would send the player hunting for
+		// a crowding problem that does not exist.
+		val rows = listOf(
+			TabRow("Player01", "<null>"),
+			TabRow("Player02", "<null>"),
+		)
+		assertEquals(
+			ForgeDataCase.WIDGET_OFF,
+			ForgeAdvice.classify(rows, ForgeParser.parse(rows)),
+		)
+	}
+
+	@Test
 	fun `no section with every column full reads as pushed out`() {
 		// One column filled to row t with content and no Forges section.
 		val rows = ('a'..'t').map { row -> TabRow("!C-$row", "§7filler $row") }
