@@ -12,6 +12,8 @@ import net.minecraft.network.chat.Style
 import net.minecraft.network.chat.TextColor
 import org.slf4j.LoggerFactory
 import java.io.File
+import java.time.LocalDateTime
+import java.time.format.DateTimeFormatter
 import java.util.Optional
 
 /**
@@ -28,8 +30,14 @@ object ForgeCast : ClientModInitializer {
 
 	private val logger = LoggerFactory.getLogger("forgecast")
 
-	/** Written into the run directory, overwritten on every dump. */
-	private const val DUMP_FILE_NAME = "forgecast-dump.txt"
+	/** Dumps are written into this folder inside the run directory. */
+	private const val DUMP_DIR_NAME = "forgecast-dumps"
+
+	/**
+	 * Sortable, with millisecond precision so that two dumps taken in the same
+	 * second cannot overwrite one another.
+	 */
+	private val FILE_STAMP: DateTimeFormatter = DateTimeFormatter.ofPattern("yyyyMMdd-HHmmss-SSS")
 
 	override fun onInitializeClient() {
 		// Registers a command that the client handles by itself. Typing
@@ -47,7 +55,8 @@ object ForgeCast : ClientModInitializer {
 	}
 
 	/**
-	 * Writes every current tab-list entry to [DUMP_FILE_NAME].
+	 * Writes every current tab-list entry to a new timestamped file inside
+	 * [DUMP_DIR_NAME]. Nothing is ever overwritten.
 	 *
 	 * Returns a Brigadier result code: 1 for success, 0 for "did nothing".
 	 */
@@ -64,10 +73,18 @@ object ForgeCast : ClientModInitializer {
 		// "Listed" players are exactly those the server asked to show in the tab
 		// list - which on Hypixel includes its fake widget entries.
 		val entries = connection.listedOnlinePlayers.toList()
-		val target = File(client.gameDirectory, DUMP_FILE_NAME)
+
+		// One file per dump, so a rapid sequence of captures cannot lose data.
+		// The time is recorded in the filename AND inside the file, so a capture
+		// can be lined up against whatever was counting down at the time.
+		val now = LocalDateTime.now()
+		val dir = File(client.gameDirectory, DUMP_DIR_NAME)
+		dir.mkdirs()
+		val target = File(dir, "dump-${now.format(FILE_STAMP)}.txt")
 
 		val out = StringBuilder()
 		out.append("ForgeCast tab list dump\n")
+		out.append("taken\t").append(now).append('\n')
 		out.append("entries\t").append(entries.size).append('\n')
 		out.append("columns\tindex\torder\tprofile\traw\n")
 		out.append("--\n")
@@ -85,12 +102,12 @@ object ForgeCast : ClientModInitializer {
 				.append(raw).append('\n')
 		}
 
-		// Overwrite rather than append. UTF-8 matters: section signs are not ASCII.
+		// UTF-8 matters: section signs are not ASCII.
 		target.writeText(out.toString(), Charsets.UTF_8)
 
 		logger.info("Wrote {} tab list entries to {}", entries.size, target.absolutePath)
 		source.sendFeedback(
-			Component.literal("ForgeCast: wrote ${entries.size} entries to $DUMP_FILE_NAME")
+			Component.literal("ForgeCast: wrote ${entries.size} entries to $DUMP_DIR_NAME/${target.name}")
 		)
 		return 1
 	}
