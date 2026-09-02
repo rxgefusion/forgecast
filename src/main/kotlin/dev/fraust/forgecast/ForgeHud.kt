@@ -1,20 +1,21 @@
 package dev.fraust.forgecast
 
+import net.fabricmc.fabric.api.client.rendering.v1.hud.HudElement
 import net.minecraft.client.DeltaTracker
 import net.minecraft.client.Minecraft
 import net.minecraft.client.gui.Font
 import net.minecraft.client.gui.GuiGraphicsExtractor
-import net.fabricmc.fabric.api.client.rendering.v1.hud.HudElement
+import java.time.Instant
 
 /**
  * Draws the forge slots as a plain text panel in the corner of the screen.
  *
- * RENDERING ONLY. This reads through [ForgeParser] and the same live wiring
- * the commands use; it does not parse anything itself.
+ * RENDERING ONLY. Parsing is [ForgeParser]'s job and merging is
+ * [ForgeMemory]'s; this file decides what the result should look like.
  *
  * Timing: [extractRenderState] is called EVERY FRAME - 60 to 200+ times a
  * second. Re-reading the tab list that often would be pure waste, so the
- * parsed snapshot is cached and refreshed at most once per second, measured
+ * merged result is cached and refreshed at most once per second, measured
  * against the wall clock. Drawing happens every frame; parsing does not.
  *
  * A tick-based counter was the alternative, but ticks stall under lag, so
@@ -32,34 +33,45 @@ object ForgeHud : HudElement {
 	private const val MARGIN = 4
 	private const val LINE_GAP = 1
 
-	/** Extra indent for slots that did not render, so they read differently. */
+	/** Extra indent for slots with nothing to show, so they read differently. */
 	private const val TRUNCATED_INDENT = 10
 
-	// Colours are ARGB. Deliberately few: just enough to separate the states.
+	// Colours are ARGB. Live values are bright; remembered ones are deliberately
+	// duller, so the panel reads at a glance without needing to be studied.
 	private const val COLOR_HEADER = 0xFFAAAAAA.toInt()
 	private const val COLOR_SLOT_NUMBER = 0xFF7F7F7F.toInt()
 	private const val COLOR_ITEM = 0xFFFFFFFF.toInt()
 	private const val COLOR_TIME = 0xFF55FFFF.toInt()
 	private const val COLOR_READY = 0xFF55FF55.toInt()
 	private const val COLOR_EMPTY = 0xFF6E6E6E.toInt()
-	private const val COLOR_NOT_VISIBLE = 0xFF4A4A4A.toInt()
 	private const val COLOR_UNRECOGNISED = 0xFFFF5555.toInt()
+
+	private const val COLOR_REMEMBERED_ITEM = 0xFF9A9A9A.toInt()
+	private const val COLOR_REMEMBERED_TIME = 0xFF3E9E9E.toInt()
+	private const val COLOR_REMEMBERED_READY = 0xFF3E9E5E.toInt()
+	private const val COLOR_AGE = 0xFF5A5A5A.toInt()
+	private const val COLOR_NOT_VISIBLE = 0xFF4A4A4A.toInt()
+
+	private val memory = ForgeMemory()
 
 	private var lastRefreshMs = 0L
 
 	/**
-	 * The most recent usable snapshot, or null when there is nothing to show.
+	 * The most recent merged view, or null when there is nothing to show.
 	 *
 	 * Null is the whole point: when the forge section goes away we clear this
-	 * rather than keep drawing the last values. Stale numbers that look live
-	 * are worse than an empty screen.
+	 * rather than keep drawing. Stale numbers that look live are worse than an
+	 * empty screen - which is different from a REMEMBERED value, which is
+	 * labelled as remembered and shows its age.
 	 */
-	private var cached: ForgeSnapshot? = null
+	private var cached: List<MergedSlot>? = null
 
 	fun toggle(): Boolean {
 		enabled = !enabled
 		if (!enabled) {
-			// Drop everything so re-enabling never flashes old values.
+			// Drop the drawn view so re-enabling never flashes old pixels. The
+			// memory itself is kept - remembering across a hidden panel is the
+			// entire point of it.
 			cached = null
 			lastRefreshMs = 0L
 		}
@@ -80,8 +92,8 @@ object ForgeHud : HudElement {
 
 		refreshIfDue(client)
 
-		val snapshot = cached ?: return
-		draw(graphics, client.font, snapshot)
+		val slots = cached ?: return
+		draw(graphics, client.font, slots)
 	}
 
 	/** True only while connected to a Hypixel address. */
@@ -104,30 +116,33 @@ object ForgeHud : HudElement {
 
 		// Reuses the exact live wiring the commands use, so the panel can never
 		// disagree with /forgecast status.
-		val snapshot = ForgeParser.parse(ForgeCast.readTabRows(connection))
+		val rows = ForgeCast.readTabRows(connection)
+		val snapshot = ForgeParser.parse(rows)
 
 		// No Forges section here means hide, not freeze.
-		cached = if (snapshot.foundSection) snapshot else null
+		if (!snapshot.foundSection) {
+			cached = null
+			return
+		}
+
+		cached = memory.update(snapshot, ProfileReader.profileOf(rows), Instant.now())
 	}
 
-	private fun didNotRender(slot: ForgeSlot): Boolean =
-		slot.state == ForgeSlotState.UNKNOWN && slot.rawText == null
-
-	private fun draw(graphics: GuiGraphicsExtractor, font: Font, snapshot: ForgeSnapshot) {
+	private fun draw(graphics: GuiGraphicsExtractor, font: Font, slots: List<MergedSlot>) {
 		val step = font.lineHeight + LINE_GAP
+		val nowMs = System.currentTimeMillis()
 		var y = MARGIN
 
 		graphics.text(font, "Forges", MARGIN, y, COLOR_HEADER)
 		y += step
 
-		val slots = snapshot.slots
 		var i = 0
 		while (i < slots.size) {
-			if (didNotRender(slots[i])) {
-				// Collapse a run of missing slots onto one line, indented further
-				// and dimmer so it cannot be mistaken for an empty slot.
+			if (slots[i].source == SlotSource.NONE) {
+				// Collapse a run of blanks onto one line, indented further and
+				// dimmer so it cannot be mistaken for an empty slot.
 				var end = i
-				while (end + 1 < slots.size && didNotRender(slots[end + 1])) end++
+				while (end + 1 < slots.size && slots[end + 1].source == SlotSource.NONE) end++
 				val label = if (i == end) "${slots[i].slot}" else "${slots[i].slot}-${slots[end].slot}"
 				drawSegments(
 					graphics, font, MARGIN + TRUNCATED_INDENT, y,
@@ -135,7 +150,7 @@ object ForgeHud : HudElement {
 				)
 				i = end + 1
 			} else {
-				drawSegments(graphics, font, MARGIN, y, segmentsFor(slots[i]))
+				drawSegments(graphics, font, MARGIN, y, segmentsFor(slots[i], nowMs))
 				i++
 			}
 			y += step
@@ -157,8 +172,32 @@ object ForgeHud : HudElement {
 		}
 	}
 
-	private fun segmentsFor(slot: ForgeSlot): List<Pair<String, Int>> {
+	private fun segmentsFor(slot: MergedSlot, nowMs: Long): List<Pair<String, Int>> {
 		val number = "${slot.slot}) " to COLOR_SLOT_NUMBER
+
+		if (slot.source == SlotSource.REMEMBERED) {
+			// Three signals mark a remembered value: the "~", the dimmer colours,
+			// and the age in brackets. None of them is load-bearing alone.
+			val age = slot.observedAt?.let { " (${ageText(it, nowMs)})" to COLOR_AGE }
+			return when (slot.state) {
+				ForgeSlotState.IN_PROGRESS -> listOfNotNull(
+					number,
+					"${slot.itemName ?: "?"} " to COLOR_REMEMBERED_ITEM,
+					"~${slot.remaining?.toString() ?: "?"}" to COLOR_REMEMBERED_TIME,
+					age,
+				)
+
+				ForgeSlotState.READY -> listOfNotNull(
+					number,
+					"${slot.itemName ?: "?"} " to COLOR_REMEMBERED_ITEM,
+					"~READY" to COLOR_REMEMBERED_READY,
+					age,
+				)
+
+				else -> listOfNotNull(number, "~empty" to COLOR_NOT_VISIBLE, age)
+			}
+		}
+
 		return when (slot.state) {
 			ForgeSlotState.IN_PROGRESS -> listOf(
 				number,
@@ -176,6 +215,16 @@ object ForgeHud : HudElement {
 
 			// Rendered but unrecognised. Shown so it can be reported.
 			ForgeSlotState.UNKNOWN -> listOf(number, "unrecognised" to COLOR_UNRECOGNISED)
+		}
+	}
+
+	/** Compact "how long ago was this last actually seen". */
+	private fun ageText(observedAt: Instant, nowMs: Long): String {
+		val seconds = ((nowMs - observedAt.toEpochMilli()) / 1000).coerceAtLeast(0)
+		return when {
+			seconds < 60 -> "${seconds}s ago"
+			seconds < 3600 -> "${seconds / 60}m ago"
+			else -> "${seconds / 3600}h ago"
 		}
 	}
 }
