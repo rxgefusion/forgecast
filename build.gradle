@@ -9,6 +9,19 @@ repositories {
 	mavenCentral()
 }
 
+loom {
+	runConfigs.client {
+		// DevAuth Neo ships disabled on purpose so it can never activate by
+		// accident. This turns it on for runClient only - a server has no
+		// account to log in with.
+		//
+		// 'account' is just a local label for the saved token, not an email
+		// address. Setting it here stops DevAuth pausing to ask for it on the
+		// console, which Gradle's progress bar hides.
+		vmArgs "-Ddevauth.enabled=1", "-Ddevauth.account=main"
+	}
+}
+
 dependencies {
 	// Versions live in gradle.properties
 	minecraft "com.mojang:minecraft:${project.minecraft_version}"
@@ -19,6 +32,11 @@ dependencies {
 
 	// Lets Minecraft load a mod written in Kotlin.
 	implementation "net.fabricmc:fabric-language-kotlin:${project.fabric_language_kotlin_version}"
+
+	// Dev-only: lets the dev client sign in with a real Microsoft account.
+	// 'localRuntime' means it is on the classpath when running locally but is
+	// NEVER compiled into, or shipped with, the mod jar.
+	localRuntime "net.litetex.mcm:dev-auth-neo:${project.dev_auth_neo_version}"
 }
 
 processResources {
