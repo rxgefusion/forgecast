@@ -74,7 +74,7 @@ object ForgeHud : HudElement {
 
 		// Checked every frame because it is cheap, so leaving the server hides
 		// the panel immediately rather than up to a second later.
-		if (!onHypixel(client)) {
+		if (!ForgeCast.isOnHypixel(client)) {
 			cached = null
 			return
 		}
@@ -83,13 +83,6 @@ object ForgeHud : HudElement {
 
 		val slots = cached ?: return
 		draw(graphics, client.font, slots)
-	}
-
-	/** True only while connected to a Hypixel address. */
-	private fun onHypixel(client: Minecraft): Boolean {
-		if (client.connection == null) return false
-		val address = client.currentServer?.ip ?: return false
-		return address.lowercase().contains("hypixel")
 	}
 
 	private fun refreshIfDue(client: Minecraft) {

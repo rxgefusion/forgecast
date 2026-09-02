@@ -123,12 +123,11 @@ object ForgeCast : ClientModInitializer {
 		if (now - lastAdviceCheckMs < ADVICE_INTERVAL_MS) return
 		lastAdviceCheckMs = now
 
-		val connection = client.connection
-		val address = client.currentServer?.ip
-		if (connection == null || address == null || !address.lowercase().contains("hypixel")) {
+		if (!isOnHypixel(client)) {
 			adviceThrottle.reset()
 			return
 		}
+		val connection = client.connection ?: return
 
 		val rows = readTabRows(connection)
 
@@ -166,6 +165,19 @@ object ForgeCast : ClientModInitializer {
 		// in which case the game falls back to the profile name.
 		val display = info.tabListDisplayName
 		return if (display == null) "<null>" else toLegacyString(display)
+	}
+
+	/**
+	 * Whether we are connected to a Hypixel address.
+	 *
+	 * Shared rather than repeated: the HUD and the advice check both need it,
+	 * and two copies of a rule like this drift apart silently. The project has
+	 * already had one near-miss with two duration parsers.
+	 */
+	internal fun isOnHypixel(client: Minecraft): Boolean {
+		if (client.connection == null) return false
+		val address = client.currentServer?.ip ?: return false
+		return address.lowercase().contains("hypixel")
 	}
 
 	/** The live tab list, in the shape [ForgeParser] expects. */
