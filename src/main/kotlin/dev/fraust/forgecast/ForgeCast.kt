@@ -4,6 +4,7 @@ import com.mojang.brigadier.builder.LiteralArgumentBuilder
 import net.fabricmc.api.ClientModInitializer
 import net.fabricmc.fabric.api.client.command.v2.ClientCommandRegistrationCallback
 import net.fabricmc.fabric.api.client.command.v2.FabricClientCommandSource
+import net.fabricmc.fabric.api.client.rendering.v1.hud.HudElementRegistry
 import net.minecraft.ChatFormatting
 import net.minecraft.client.Minecraft
 import net.minecraft.client.multiplayer.ClientPacketListener
@@ -13,6 +14,7 @@ import net.minecraft.network.chat.FormattedText
 import net.minecraft.network.chat.MutableComponent
 import net.minecraft.network.chat.Style
 import net.minecraft.network.chat.TextColor
+import net.minecraft.resources.Identifier
 import org.slf4j.LoggerFactory
 import java.io.File
 import java.time.LocalDateTime
@@ -56,9 +58,32 @@ object ForgeCast : ClientModInitializer {
 						LiteralArgumentBuilder.literal<FabricClientCommandSource>("status")
 							.executes { context -> printStatus(context.source) }
 					)
+					.then(
+						LiteralArgumentBuilder.literal<FabricClientCommandSource>("toggle")
+							.executes { context -> toggleHud(context.source) }
+					)
 			)
 		}
-		logger.info("ForgeCast ready - /forgecast dump and /forgecast status are registered")
+
+		// Draws after the vanilla HUD elements. The element itself decides each
+		// frame whether there is anything to show.
+		HudElementRegistry.addLast(
+			Identifier.fromNamespaceAndPath("forgecast", "forge_panel"),
+			ForgeHud,
+		)
+
+		logger.info("ForgeCast ready - dump, status and toggle are registered")
+	}
+
+	private fun toggleHud(source: FabricClientCommandSource): Int {
+		val nowEnabled = ForgeHud.toggle()
+		source.sendFeedback(
+			prefix().append(
+				Component.literal(if (nowEnabled) "HUD shown" else "HUD hidden")
+					.withStyle(if (nowEnabled) ChatFormatting.GREEN else ChatFormatting.GRAY)
+			)
+		)
+		return 1
 	}
 
 	// ------------------------------------------------------- reading the game
@@ -78,7 +103,7 @@ object ForgeCast : ClientModInitializer {
 	}
 
 	/** The live tab list, in the shape [ForgeParser] expects. */
-	private fun readTabRows(connection: ClientPacketListener): List<TabRow> =
+	internal fun readTabRows(connection: ClientPacketListener): List<TabRow> =
 		connection.listedOnlinePlayers.map { info ->
 			TabRow(profileNameOf(info), rowTextOf(info))
 		}
