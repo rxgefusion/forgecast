@@ -2,13 +2,11 @@ plugins {
 	id 'net.fabricmc.fabric-loom' version "${loom_version}"
 	id 'org.jetbrains.kotlin.jvm' version "${kotlin_version}"
 }
-
 repositories {
 	// Loom adds the Minecraft/Fabric repositories automatically.
 	// Add extra repositories here only when depending on other people's mods.
 	mavenCentral()
 }
-
 loom {
 	runConfigs.client {
 		// DevAuth Neo ships disabled on purpose so it can never activate by
@@ -21,53 +19,43 @@ loom {
 		vmArgs "-Ddevauth.enabled=1", "-Ddevauth.account=main"
 	}
 }
-
 dependencies {
 	// Versions live in gradle.properties
 	minecraft "com.mojang:minecraft:${project.minecraft_version}"
 	implementation "net.fabricmc:fabric-loader:${project.loader_version}"
-
 	// Fabric API - technically optional, but you almost certainly want it.
 	implementation "net.fabricmc.fabric-api:fabric-api:${project.fabric_api_version}"
-
 	// Lets Minecraft load a mod written in Kotlin.
 	implementation "net.fabricmc:fabric-language-kotlin:${project.fabric_language_kotlin_version}"
-
 	// Dev-only: lets the dev client sign in with a real Microsoft account.
 	// 'localRuntime' means it is on the classpath when running locally but is
 	// NEVER compiled into, or shipped with, the mod jar.
 	localRuntime "net.litetex.mcm:dev-auth-neo:${project.dev_auth_neo_version}"
+	// Tests only. Never reaches the mod jar.
+	testImplementation "org.junit.jupiter:junit-jupiter:${project.junit_version}"
+	testRuntimeOnly "org.junit.platform:junit-platform-launcher:${project.junit_version}"
 }
-
+tasks.named('test') {
+	useJUnitPlatform()
+	testLogging {
+		events 'passed', 'failed', 'skipped'
+		exceptionFormat = 'full'
+	}
+}
 processResources {
 	def version = project.version
 	inputs.property "version", version
-
 	// Substitutes ${version} inside fabric.mod.json with the version above.
 	filesMatching("fabric.mod.json") {
 		expand "version": version
 	}
 }
-
 tasks.withType(JavaCompile).configureEach {
 	it.options.release = 25
 }
-
 kotlin {
 	jvmToolchain(25)
 }
-
-// Dev-only tooling: runs the forge parser against saved dump files so it can
-// be checked without launching the game. The harness lives in the test source
-// set, so none of this ends up in the mod jar.
-tasks.register('parseDumps', JavaExec) {
-	group = 'verification'
-	description = 'Runs ForgeParser against the dumps in run/forgecast-dumps'
-	mainClass = 'dev.fraust.forgecast.ParserHarnessKt'
-	classpath = sourceSets.test.runtimeClasspath
-	args 'run/forgecast-dumps'
-}
-
 java {
 	withSourcesJar()
 	sourceCompatibility = JavaVersion.VERSION_25
