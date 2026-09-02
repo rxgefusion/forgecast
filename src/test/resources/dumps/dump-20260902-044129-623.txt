@@ -1,0 +1,86 @@
+ForgeCast tab list dump
+taken	2026-09-02T04:41:29.623401300
+entries	81
+columns	index	order	profile	raw
+--
+1	0	!D-d	 Mining 60: §c§lMAX
+2	0	!B-s	
+3	0	!B-i	 Bank: §60§7 / §60
+4	0	!A-d	§bStoatz §7(Offline 10d§7)
+5	0	!A-h	
+6	0	!D-i	
+7	0	!D-m	
+8	0	!A-s	
+9	0	!C-s	
+10	0	!B-d	 Gems: §a0
+11	0	!B-a	               §3§lInfo
+12	0	!A-p	
+13	0	!D-k	
+14	0	!C-i	
+15	0	!A-l	
+16	0	!C-c	 2) §6Refined Titanium§7: §b7h
+17	0	!D-g	
+18	0	!B-e	 Crystals: §d2
+19	0	!D-h	
+20	0	!D-r	
+21	0	!D-c	 Farming 58: §a100%
+22	0	!B-o	 §bMarina: §b|§f||||||||| §f(2%)
+23	0	!A-i	
+24	0	!C-o	 1: §7[Lvl 95] §5Rift Ferret §b3M
+25	0	!A-e	
+26	0	!B-t	§9§lForges:
+27	0	!D-b	§e§lSkills:
+28	0	!B-l	§e§lElection: §b38h
+29	0	!B-p	
+30	0	!B-j	 Interest: §e9 Hours§6 (0)
+31	0	!A-j	
+32	0	!D-p	
+33	0	!D-s	
+34	0	!D-l	
+35	0	!B-r	 Starts In: §e6h
+36	0	!B-f	
+37	0	!B-h	 SB Level§f: §8[§c1§8] §b0§3/§b100 XP
+38	0	!D-f	 Foraging 52: §a100%
+39	0	!B-c	 Server: §8mini00XX
+40	0	!C-t	
+41	0	!C-r	
+42	0	!C-p	
+43	0	!A-q	
+44	0	!C-h	 7) §7EMPTY
+45	0	!D-j	
+46	0	!B-g	§e§lProfile: §aTestProfile
+47	0	!D-n	
+48	0	!A-n	
+49	0	!C-n	§e§lPet Training:
+50	0	!C-j	§e§lPet:
+51	0	!B-n	 §cFinnegan: §c||||§f|||||| §f(36%)
+52	0	!A-a	          §b§lCoop §f(3)
+53	0	!D-t	
+54	0	!B-b	§b§lArea: §7Private Island
+55	0	!A-c	§bRunicWy §7(Offline 35d+§7)
+56	0	!C-e	 4) §9Bejeweled Handle§7: §aReady!
+57	0	!D-o	
+58	0	!D-e	 Combat 60: §c§lMAX
+59	0	!D-a	               §3§lInfo
+60	0	!C-m	
+61	0	!C-a	               §3§lInfo
+62	0	!A-b	§8[§c450§8] §bPlayer06 §6ᛃ
+63	0	!A-t	
+64	0	!A-m	
+65	0	!B-q	§e§lEvent: §cSeason of Jerry
+66	0	!C-k	 §7[Lvl 100] §5Scatha
+67	0	!B-k	
+68	0	!C-f	 5) §7EMPTY
+69	0	!A-g	
+70	0	!A-f	          §5§lGuests §f(0)
+71	0	!A-o	
+72	0	!C-q	
+73	0	!C-d	 3) §7EMPTY
+74	0	!C-g	 6) §7EMPTY
+75	0	!B-m	 §aCole: §a||||||§f|||| §f(60%)
+76	0	!C-b	 1) §6Refined Titanium§7: §b9h
+77	0	!A-k	
+78	0	Player06	<null>
+79	0	!C-l	 §b§lMAX LEVEL
+80	0	!A-r	
+81	0	!D-q	

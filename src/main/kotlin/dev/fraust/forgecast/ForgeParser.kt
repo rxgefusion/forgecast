@@ -82,6 +82,13 @@ object ForgeParser {
 	private const val SECTION_SIGN = '§'
 	private const val FORGES_HEADER = "Forges:"
 
+	/**
+	 * The centred heading every column opens with. It is padding, and it sits
+	 * between a wrapped section's header and its continuation, so it must be
+	 * skipped rather than read as the end of the section.
+	 */
+	private const val COLUMN_HEADING = "Info"
+
 	/** Emitted by the dumper for RGB colours that have no legacy code. */
 	private val HEX_MARKER = Regex("<#[0-9A-Fa-f]{6}>")
 
@@ -142,9 +149,6 @@ object ForgeParser {
 		return if (matched && consumed == cleaned.length) total else null
 	}
 
-	/** Column letter of a widget profile name: "!C-b" gives 'C'. */
-	private fun columnOf(profileName: String): Char? =
-		if (profileName.length >= 2 && profileName[0] == '!') profileName[1] else null
 
 	fun parse(rows: List<TabRow>): ForgeSnapshot {
 		// 1. Widget rows only. Real players never carry widget text.
@@ -163,31 +167,39 @@ object ForgeParser {
 		}
 
 		val header = widgets[headerIndex]
-		val headerColumn = columnOf(header.profileName)
 
 		val found = LinkedHashMap<Int, ForgeSlot>()
 		val unparsed = mutableListOf<String>()
 
 		// 4. Read forward until the section ends.
+		//
+		// This deliberately crosses column boundaries. With Wrapping enabled on
+		// the Forge widget, Hypixel puts the header on the last row of one
+		// column and continues the slots at the top of the next, separated by
+		// that column's own heading. An earlier version stopped at the boundary
+		// and read zero slots from such a layout.
 		for (i in headerIndex + 1 until widgets.size) {
-			val row = widgets[i]
+			// Never invent more slots than the forge has.
+			if (found.size >= EXPECTED_SLOT_COUNT) break
 
-			// Stop at a column boundary. Sorting places !C-t directly before
-			// !D-a, so without this a section near the bottom of one column
-			// would run into the top of the next.
-			if (columnOf(row.profileName) != headerColumn) break
+			val text = stripFormatting(widgets[i].rawText).trim()
 
-			val text = stripFormatting(row.rawText).trim()
-			if (text.isEmpty()) break
+			// Column padding: blank filler rows and the heading a column opens
+			// with. These sit between a wrapped section and its continuation,
+			// so they are skipped rather than treated as the end.
+			if (text.isEmpty() || text == COLUMN_HEADING) continue
+
+			// A different section begins here.
 			if (HEADER_ROW.matches(text)) break
 
 			val slot = parseSlotRow(text)
 			if (slot == null) {
-				// 7. Unrecognised: record it, never guess, never crash.
+				// Not padding, not a heading, not a slot: we have left the
+				// section. Recorded so it is possible to see why we stopped.
 				unparsed += text
-			} else {
-				found[slot.slot] = slot
+				break
 			}
+			found[slot.slot] = slot
 		}
 
 		// 8. Slots that did not render are UNKNOWN, not EMPTY.

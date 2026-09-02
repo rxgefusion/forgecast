@@ -3,6 +3,7 @@ package dev.fraust.forgecast
 import com.mojang.brigadier.builder.LiteralArgumentBuilder
 import net.fabricmc.api.ClientModInitializer
 import net.fabricmc.fabric.api.client.command.v2.ClientCommandRegistrationCallback
+import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents
 import net.fabricmc.fabric.api.client.command.v2.FabricClientCommandSource
 import net.fabricmc.fabric.api.client.rendering.v1.hud.HudElementRegistry
 import net.minecraft.ChatFormatting
@@ -79,7 +80,12 @@ object ForgeCast : ClientModInitializer {
 			ForgeHud,
 		)
 
-		logger.info("ForgeCast ready - dump, status and toggle are registered")
+		// A container GUI swallows the keyboard, so /forgecast dumpgui can never
+		// be typed while one is open. Capture on a tick instead; the command
+		// then writes whatever was last seen.
+		ClientTickEvents.END_CLIENT_TICK.register { client -> captureOpenGui(client) }
+
+		logger.info("ForgeCast ready - dump, status, toggle and dumpgui are registered")
 	}
 
 	private fun toggleHud(source: FabricClientCommandSource): Int {
@@ -280,40 +286,48 @@ object ForgeCast : ClientModInitializer {
 	 * Read-only: nothing is clicked and nothing is sent to the server. Same
 	 * philosophy as the tab-list dump - capture now, work out the format later.
 	 */
-	private fun dumpGui(source: FabricClientCommandSource): Int {
-		val client = Minecraft.getInstance()
+	/**
+	 * The most recent container screen, already rendered to text.
+	 *
+	 * A chat command cannot be typed while a container GUI is open - the GUI
+	 * takes the keyboard - so capturing at command time is impossible. Instead
+	 * the screen is captured on a tick WHILE it is open, and the command writes
+	 * whatever was last captured. Open the Forge, close it, run the command.
+	 */
+	private var lastGuiCapture: String? = null
+	private var lastGuiScreenName: String? = null
+	private var lastGuiOccupied = 0
+	private var lastGuiSlots = 0
+	private var lastGuiCaptureMs = 0L
 
+	/** Re-capturing every tick would be wasteful; the contents barely move. */
+	private const val GUI_CAPTURE_INTERVAL_MS = 500L
+
+	private fun captureOpenGui(client: Minecraft) {
 		val screen = client.screen
-		if (screen !is AbstractContainerScreen<*>) {
-			source.sendError(
-				Component.literal(
-					"ForgeCast: no container screen is open. Open the Forge (or any chest GUI) and run this again."
-				)
-			)
-			return 0
-		}
+		if (screen !is AbstractContainerScreen<*>) return
 
-		val level = client.level
-		val player = client.player
-		if (level == null || player == null) {
-			source.sendError(Component.literal("ForgeCast: not in a world."))
-			return 0
-		}
+		val now = System.currentTimeMillis()
+		if (now - lastGuiCaptureMs < GUI_CAPTURE_INTERVAL_MS) return
+		lastGuiCaptureMs = now
 
-		// Tooltips are generated the same way the game generates them for the
-		// hover text, so what lands in the file is what Hypixel actually sends.
+		buildGuiDump(client, screen)
+	}
+
+	/** Renders the open screen to text and stores it. Read-only throughout. */
+	private fun buildGuiDump(client: Minecraft, screen: AbstractContainerScreen<*>) {
+		val level = client.level ?: return
+		val player = client.player ?: return
+
+		// Tooltips are generated the same way the game generates hover text, so
+		// what lands in the file is what Hypixel actually sent.
 		val tooltipContext = Item.TooltipContext.of(level)
 		val tooltipFlag = TooltipFlag.NORMAL
-
-		val now = LocalDateTime.now()
-		val dir = File(client.gameDirectory, DUMP_DIR_NAME)
-		dir.mkdirs()
-		val target = File(dir, "gui-${now.format(FILE_STAMP)}.txt")
 
 		val slots = screen.menu.slots
 		val out = StringBuilder()
 		out.append("ForgeCast GUI dump\n")
-		out.append("taken\t").append(now).append('\n')
+		out.append("captured\t").append(LocalDateTime.now()).append('\n')
 		out.append("screen\t").append(toLegacyString(screen.title)).append('\n')
 		out.append("screenClass\t").append(screen.javaClass.simpleName).append('\n')
 		out.append("slots\t").append(slots.size).append('\n')
@@ -332,7 +346,7 @@ object ForgeCast : ClientModInitializer {
 				.append(stack.count).append('\t')
 				.append(toLegacyString(stack.hoverName)).append('\n')
 
-			// Defensive: an item with odd data should not lose the whole dump.
+			// Defensive: an item with odd data should not lose the whole capture.
 			val lines = runCatching { stack.getTooltipLines(tooltipContext, player, tooltipFlag) }
 				.getOrElse { error ->
 					out.append("tiperror\t").append(index).append('\t').append(error).append('\n')
@@ -344,12 +358,37 @@ object ForgeCast : ClientModInitializer {
 			}
 		}
 
-		target.writeText(out.toString(), Charsets.UTF_8)
+		lastGuiCapture = out.toString()
+		lastGuiScreenName = ForgeParser.stripFormatting(toLegacyString(screen.title)).trim()
+		lastGuiOccupied = occupied
+		lastGuiSlots = slots.size
+	}
 
-		logger.info("Wrote {} GUI slots ({} occupied) to {}", slots.size, occupied, target.absolutePath)
+	private fun dumpGui(source: FabricClientCommandSource): Int {
+		val client = Minecraft.getInstance()
+
+		// If a container somehow is open (a macro, say), take a fresh capture.
+		(client.screen as? AbstractContainerScreen<*>)?.let { buildGuiDump(client, it) }
+
+		val text = lastGuiCapture
+		if (text == null) {
+			source.sendError(
+				Component.literal(
+					"ForgeCast: no container screen has been opened yet. Open the Forge, close it, then run this again."
+				)
+			)
+			return 0
+		}
+
+		val target = File(File(client.gameDirectory, DUMP_DIR_NAME).apply { mkdirs() },
+			"gui-${LocalDateTime.now().format(FILE_STAMP)}.txt")
+		target.writeText(text, Charsets.UTF_8)
+
+		logger.info("Wrote GUI capture of '{}' to {}", lastGuiScreenName, target.absolutePath)
 		source.sendFeedback(
 			Component.literal(
-				"ForgeCast: wrote $occupied occupied of ${slots.size} slots to $DUMP_DIR_NAME/${target.name}"
+				"ForgeCast: wrote '${lastGuiScreenName}' " +
+					"($lastGuiOccupied occupied of $lastGuiSlots slots) to $DUMP_DIR_NAME/${target.name}"
 			)
 		)
 		return 1

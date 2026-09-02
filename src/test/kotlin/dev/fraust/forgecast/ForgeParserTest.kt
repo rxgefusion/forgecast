@@ -99,6 +99,17 @@ class ForgeParserTest {
 			"dump-20260902-022501-663.txt", "Private Island", "!D-o", 5,
 			listOf(B, B, E, R, E, U, U),
 		),
+		// Wrapping enabled. The section fits in one column here.
+		Expected(
+			"dump-20260902-044123-097.txt", "Private Island", "!C-b", 7,
+			listOf(B, B, E, R, E, E, E),
+		),
+		// Wrapping enabled and the section spans B into C. This is the layout
+		// that read zero slots before the boundary rule was fixed.
+		Expected(
+			"dump-20260902-044129-623.txt", "Private Island wrapped", "!B-t", 7,
+			listOf(B, B, E, R, E, E, E),
+		),
 	)
 
 	@TestFactory
@@ -129,6 +140,57 @@ class ForgeParserTest {
 				)
 			}
 		}
+
+	@Test
+	fun `a section that wraps into the next column is read in full`() {
+		// Real capture with Wrapping enabled on the Forge widget. The header
+		// lands on the last row of column B and all seven slots live in column
+		// C, separated by that column's "Info" heading.
+		val snapshot = ForgeParser.parse(loadFixture("dump-20260902-044129-623.txt"))
+
+		assertEquals("!B-t", snapshot.headerProfile, "header sits on the last row of column B")
+		assertEquals(7, snapshot.renderedSlots, "all seven slots continue into column C")
+		assertEquals(
+			listOf(B, B, E, R, E, E, E), snapshot.slots.map { it.state },
+			"the wrapped section must parse exactly like an unwrapped one",
+		)
+		assertEquals("Refined Titanium", snapshot.slots[0].itemName)
+		assertEquals(9.hours, snapshot.slots[0].remaining)
+		assertEquals("Bejeweled Handle", snapshot.slots[3].itemName)
+		assertTrue(snapshot.unparsedRows.isEmpty(), "junk leaked in: ${snapshot.unparsedRows}")
+	}
+
+	@Test
+	fun `a wrapped section stops before the next heading`() {
+		// The row after slot 7 is blank, then "Pet:". Neither may be collected,
+		// and the pet rows below must not become slots.
+		val snapshot = ForgeParser.parse(loadFixture("dump-20260902-044129-623.txt"))
+		assertEquals(7, snapshot.renderedSlots)
+		assertEquals(
+			ForgeParser.EXPECTED_SLOT_COUNT, snapshot.slots.size,
+			"nothing beyond the seven real slots may be invented",
+		)
+	}
+
+	@Test
+	fun `pet training rows using a colon are never mistaken for slots`() {
+		// "1: [Lvl 95] Rift Ferret" is one character away from a slot row.
+		val rows = listOf(
+			row("!C-b", "§9§lForges:"),
+			row("!C-c", " 1) §7EMPTY"),
+			row("!C-d", "§e§lPet Training:"),
+			row("!C-e", " 1: §7[Lvl 95] §5Rift Ferret §b3M"),
+			row("!C-f", " 2: §7[Lvl 60] §5Golden Dragon"),
+		)
+		val snapshot = ForgeParser.parse(rows)
+
+		assertEquals(1, snapshot.renderedSlots, "only the real slot row counts")
+		assertEquals(ForgeSlotState.EMPTY, snapshot.slots[0].state)
+		assertEquals(
+			ForgeSlotState.UNKNOWN, snapshot.slots[1].state,
+			"the pet row must not become slot 2",
+		)
+	}
 
 	@Test
 	fun `slots that never rendered are unknown, never empty`() {
@@ -254,9 +316,11 @@ class ForgeParserTest {
 	}
 
 	@Test
-	fun `the section stops at a column boundary`() {
-		// Sorting places !C-t immediately before !D-a. Without a column check a
-		// section at the bottom of one column would run into the next.
+	fun `the section continues across a column boundary`() {
+		// This test used to assert the OPPOSITE - that a column change ended the
+		// section. Real captures with Wrapping enabled disproved that: Hypixel
+		// deliberately continues the slots into the next column. The rows are
+		// unchanged; only the expectation is corrected.
 		val rows = listOf(
 			row("!C-s", "§9§lForges:"),
 			row("!C-t", " 1) §6Refined Titanium§7: §b11h"),
@@ -264,8 +328,46 @@ class ForgeParserTest {
 		)
 		val snapshot = ForgeParser.parse(rows)
 
-		assertEquals(1, snapshot.renderedSlots, "the !D-a row belongs to a different column")
-		assertEquals(ForgeSlotState.UNKNOWN, snapshot.slots[1].state)
+		assertEquals(2, snapshot.renderedSlots, "a column change must not end the section")
+		assertEquals(ForgeSlotState.IN_PROGRESS, snapshot.slots[1].state)
+		assertEquals(10.hours, snapshot.slots[1].remaining)
+	}
+
+	@Test
+	fun `column padding between a wrapped header and its slots is skipped`() {
+		// The gap a wrapped section actually has: the header ends one column,
+		// and the next opens with a blank row and its own "Info" heading.
+		val rows = listOf(
+			row("!B-t", "§9§lForges:"),
+			row("!C-a", "               §3§lInfo"),
+			row("!C-b", " 1) §6Refined Titanium§7: §b9h"),
+			row("!C-c", " 2) §7EMPTY"),
+			row("!C-d", ""),
+			row("!C-e", "§e§lPet:"),
+			row("!C-f", " §7[Lvl 100] §5Scatha"),
+		)
+		val snapshot = ForgeParser.parse(rows)
+
+		assertEquals(2, snapshot.renderedSlots, "the Info heading is padding, not a terminator")
+		assertEquals(ForgeSlotState.IN_PROGRESS, snapshot.slots[0].state)
+		assertEquals(ForgeSlotState.EMPTY, snapshot.slots[1].state)
+		assertEquals(
+			ForgeSlotState.UNKNOWN, snapshot.slots[2].state,
+			"the pet rows below Pet: must not be collected",
+		)
+	}
+
+	@Test
+	fun `no more than seven slots are ever collected`() {
+		// A malformed or hostile widget must not be able to grow the forge.
+		val rows = buildList {
+			add(row("!C-b", "§9§lForges:"))
+			for (n in 1..12) add(row("!C-${'c' + n - 1}", " $n) §7EMPTY"))
+		}
+		val snapshot = ForgeParser.parse(rows)
+
+		assertEquals(ForgeParser.EXPECTED_SLOT_COUNT, snapshot.renderedSlots)
+		assertEquals(ForgeParser.EXPECTED_SLOT_COUNT, snapshot.slots.size)
 	}
 
 	@Test
