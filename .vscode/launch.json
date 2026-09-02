@@ -9,10 +9,10 @@
       "console": "integratedTerminal",
       "stopOnEntry": false,
       "mainClass": "net.fabricmc.devlaunchinjector.Main",
-      "vmArgs": "-Dfabric.dli.config\u003dC:\\Users\\gamer\\projects\\my-first-mod\\.gradle\\loom-cache\\launch.cfg -Dfabric.dli.env\u003dclient -Dfabric.dli.main\u003dnet.fabricmc.loader.impl.launch.knot.KnotClient -XX:StackShadowPages\u003d32 --sun-misc-unsafe-memory-access\u003dallow --enable-native-access\u003dALL-UNNAMED",
+      "vmArgs": "-Ddevauth.enabled\u003d1 -Ddevauth.account\u003dmain -Dfabric.dli.config\u003dC:\\Users\\gamer\\projects\\my-first-mod\\.gradle\\loom-cache\\launch.cfg -Dfabric.dli.env\u003dclient -Dfabric.dli.main\u003dnet.fabricmc.loader.impl.launch.knot.KnotClient -XX:StackShadowPages\u003d32 --sun-misc-unsafe-memory-access\u003dallow --enable-native-access\u003dALL-UNNAMED",
       "args": "",
       "env": {},
-      "projectName": "my-first-mod"
+      "projectName": "forgecast"
     },
     {
       "type": "java",
@@ -25,7 +25,7 @@
       "vmArgs": "-Dfabric.dli.config\u003dC:\\Users\\gamer\\projects\\my-first-mod\\.gradle\\loom-cache\\launch.cfg -Dfabric.dli.env\u003dserver -Dfabric.dli.main\u003dnet.fabricmc.loader.impl.launch.knot.KnotServer --sun-misc-unsafe-memory-access\u003dallow --enable-native-access\u003dALL-UNNAMED",
       "args": "nogui",
       "env": {},
-      "projectName": "my-first-mod"
+      "projectName": "forgecast"
     }
   ]
 }

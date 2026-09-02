@@ -1,9 +1,9 @@
 {
 	"schemaVersion": 1,
-	"id": "myfirstmod",
+	"id": "forgecast",
 	"version": "${version}",
-	"name": "My First Mod",
-	"description": "My first Fabric mod, written in Kotlin.",
+	"name": "ForgeCast",
+	"description": "Fabric mod for Hypixel SkyBlock, written in Kotlin. Not a Forge mod, despite the name.",
 	"authors": [
 		"gamer"
 	],
@@ -13,7 +13,7 @@
 		"main": [
 			{
 				"adapter": "kotlin",
-				"value": "com.example.myfirstmod.MyFirstMod"
+				"value": "dev.cowgirlfraust.forgecast.ForgeCast"
 			}
 		]
 	},
