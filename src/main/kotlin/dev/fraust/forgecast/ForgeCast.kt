@@ -49,17 +49,22 @@ object ForgeCast : ClientModInitializer {
 	private val FILE_STAMP: DateTimeFormatter = DateTimeFormatter.ofPattern("yyyyMMdd-HHmmss-SSS")
 
 	override fun onInitializeClient() {
+		// First: everything below reads settings.
+		ConfigHolder.load()
+
 		// Commands the client handles by itself. Typing one is intercepted
 		// locally and never sent to the server.
 		ClientCommandRegistrationCallback.EVENT.register { dispatcher, _ ->
 			val root = LiteralArgumentBuilder.literal<FabricClientCommandSource>("forgecast")
+				// Bare /forgecast opens the settings screen. The old
+				// /forgecast toggle is gone; the panel is switched there now.
+				.executes { _ ->
+					ConfigScreen.open()
+					1
+				}
 				.then(
 					LiteralArgumentBuilder.literal<FabricClientCommandSource>("status")
 						.executes { context -> printStatus(context.source) }
-				)
-				.then(
-					LiteralArgumentBuilder.literal<FabricClientCommandSource>("toggle")
-						.executes { context -> toggleHud(context.source) }
 				)
 
 			// The capture tools are not merely refused in a release build - they
@@ -95,18 +100,7 @@ object ForgeCast : ClientModInitializer {
 			checkForgeAdvice(client)
 		}
 
-		logger.info("ForgeCast ready - dump, status, toggle and dumpgui are registered")
-	}
-
-	private fun toggleHud(source: FabricClientCommandSource): Int {
-		val nowEnabled = ForgeHud.toggle()
-		source.sendFeedback(
-			prefix().append(
-				Component.literal(if (nowEnabled) "HUD shown" else "HUD hidden")
-					.withStyle(if (nowEnabled) ChatFormatting.GREEN else ChatFormatting.GRAY)
-			)
-		)
-		return 1
+		logger.info("ForgeCast ready - /forgecast opens settings")
 	}
 
 	// ------------------------------------------------- incomplete-data advice
@@ -123,6 +117,8 @@ object ForgeCast : ClientModInitializer {
 	 * or it is not, regardless of whether the panel happens to be shown.
 	 */
 	private fun checkForgeAdvice(client: Minecraft) {
+		if (!ConfigHolder.current.adviceEnabled) return
+
 		val now = System.currentTimeMillis()
 		if (now - lastAdviceCheckMs < ADVICE_INTERVAL_MS) return
 		lastAdviceCheckMs = now

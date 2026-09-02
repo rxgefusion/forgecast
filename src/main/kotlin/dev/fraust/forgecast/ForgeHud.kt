@@ -24,13 +24,8 @@ import java.time.Instant
  */
 object ForgeHud : HudElement {
 
-	/** Flipped by /forgecast toggle. */
-	var enabled: Boolean = false
-		private set
-
 	private const val REFRESH_INTERVAL_MS = 1_000L
 
-	private const val MARGIN = 4
 	private const val LINE_GAP = 1
 
 	/** Extra indent for slots with nothing to show, so they read differently. */
@@ -66,20 +61,14 @@ object ForgeHud : HudElement {
 	 */
 	private var cached: List<MergedSlot>? = null
 
-	fun toggle(): Boolean {
-		enabled = !enabled
-		if (!enabled) {
-			// Drop the drawn view so re-enabling never flashes old pixels. The
-			// memory itself is kept - remembering across a hidden panel is the
-			// entire point of it.
-			cached = null
-			lastRefreshMs = 0L
-		}
-		return enabled
-	}
-
 	override fun extractRenderState(graphics: GuiGraphicsExtractor, deltaTracker: DeltaTracker) {
-		if (!enabled) return
+		val config = ConfigHolder.current
+		if (!config.hudEnabled) {
+			// Switched off in settings: drop the view so re-enabling never
+			// flashes stale pixels.
+			cached = null
+			return
+		}
 
 		val client = Minecraft.getInstance()
 
@@ -129,11 +118,19 @@ object ForgeHud : HudElement {
 	}
 
 	private fun draw(graphics: GuiGraphicsExtractor, font: Font, slots: List<MergedSlot>) {
+		val config = ConfigHolder.current
 		val step = font.lineHeight + LINE_GAP
 		val nowMs = System.currentTimeMillis()
-		var y = MARGIN
 
-		graphics.text(font, "Forges", MARGIN, y, COLOR_HEADER)
+		// Drawn relative to the origin, then moved and scaled as a whole, so the
+		// player-chosen position and size need no arithmetic per line.
+		graphics.pose().pushMatrix()
+		graphics.pose().translate(config.hudX.toFloat(), config.hudY.toFloat())
+		graphics.pose().scale(config.hudScale / 100f, config.hudScale / 100f)
+
+		var y = 0
+
+		graphics.text(font, "Forges", 0, y, COLOR_HEADER)
 		y += step
 
 		var i = 0
@@ -145,16 +142,18 @@ object ForgeHud : HudElement {
 				while (end + 1 < slots.size && slots[end + 1].source == SlotSource.NONE) end++
 				val label = if (i == end) "${slots[i].slot}" else "${slots[i].slot}-${slots[end].slot}"
 				drawSegments(
-					graphics, font, MARGIN + TRUNCATED_INDENT, y,
+					graphics, font, TRUNCATED_INDENT, y,
 					listOf("$label not visible" to COLOR_NOT_VISIBLE),
 				)
 				i = end + 1
 			} else {
-				drawSegments(graphics, font, MARGIN, y, segmentsFor(slots[i], nowMs))
+				drawSegments(graphics, font, 0, y, segmentsFor(slots[i], nowMs))
 				i++
 			}
 			y += step
 		}
+
+		graphics.pose().popMatrix()
 	}
 
 	/** Each line is drawn piece by piece so every piece gets its own colour. */
