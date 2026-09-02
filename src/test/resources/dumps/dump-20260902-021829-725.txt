@@ -1,0 +1,107 @@
+ForgeCast tab list dump
+taken	2026-09-02T02:18:29.725941200
+entries	102
+columns	index	order	profile	raw
+--
+1	0	!A-s	§8[§2187§8] §7Player25 §7♲
+2	0	Player18	<null>
+3	0	Player28	<null>
+4	0	Player33	<null>
+5	0	!A-n	§8[§6402§8] §bPlayer38 §7Σ
+6	0	!C-o	 §fRampart's Quarry Titanium: §c10%
+7	0	!A-k	§8[§715§8] §bPlayer29 §aⒷ
+8	0	!D-h	 Pristine: §51
+9	0	!D-g	 Mining Fortune: §6935
+10	0	Player24	<null>
+11	0	!A-g	§8[§3260§8] §bPlayer17 §6§lᛝ
+12	0	!D-r	
+13	0	!D-l	
+14	0	!B-l	§e§lPet:
+15	0	!D-j	 Mining Speed: §63824
+16	0	!A-r	§8[§2186§8] §aPlayer07
+17	0	!C-t	
+18	0	!D-c	 §bGlacite Mineshafts§f: §e414§7/§a2,000
+19	0	!D-i	 Mining Spread: §e300
+20	0	!D-a	               §3§lInfo
+21	0	!B-h	 SB Level§f: §8[§c1§8] §b0§3/§b100 XP
+22	0	!C-b	§9§lForges:
+23	0	!B-j	 Interest: §e11 Hours§6 (0)
+24	0	Player08	<null>
+25	0	Player11	<null>
+26	0	!A-t	§7and 3 other players...
+27	0	!B-r	
+28	0	!D-o	
+29	0	Player19	<null>
+30	0	!A-m	§8[§76§8] §bPlayer28 §6Ⓑ
+31	0	!A-a	         §a§lPlayers §f(21)
+32	0	!D-p	
+33	0	!C-k	§9§lCommissions:
+34	0	Player29	<null>
+35	0	!C-m	 §fTreasure Hoarder Puncher: §e50%
+36	0	!C-j	
+37	0	Player32	<null>
+38	0	!C-f	 4) §9Bejeweled Handle§7: §b4s
+39	0	!C-r	 §fMining Speed Boost: §aAvailable
+40	0	!C-d	 2) §6Refined Titanium§7: §b10h
+41	0	Player05	<null>
+42	0	!C-s	
+43	0	!C-l	 §fTitanium Miner: §c6.7%
+44	0	!C-i	 7) §7EMPTY
+45	0	!B-n	 §b§lMAX LEVEL
+46	0	!B-o	
+47	0	Player10	<null>
+48	0	Player02	<null>
+49	0	!B-q	
+50	0	!C-a	               §3§lInfo
+51	0	!A-j	§8[§e88§8] §bPlayer10
+52	0	!B-p	
+53	0	!C-c	 1) §6Refined Titanium§7: §b11h
+54	0	!D-e	§e§lStats:
+55	0	Player06	<null>
+56	0	!B-e	 Fairy Souls: §d10§5/§d15
+57	0	!B-c	 Server: §8mini00XX
+58	0	Player38	<null>
+59	0	!A-q	§8[§f40§8] §aPlayer08
+60	0	!A-l	§8[§712§8] §bPlayer46 §5Ⓑ
+61	0	Player23	<null>
+62	0	!C-n	 §fLava Springs Mithril: §c0%
+63	0	!D-t	
+64	0	!C-q	§9§lPickaxe Ability:
+65	0	!B-i	 Bank: §60§7 / §60
+66	0	!B-k	
+67	0	!D-q	
+68	0	!D-f	 Speed: §f400
+69	0	!C-p	
+70	0	!A-d	§8[§4508§8] §bPlayer18 §b♔
+71	0	!C-h	 6) §7EMPTY
+72	0	!D-s	
+73	0	!A-o	§8[§727§8] §bPlayer33
+74	0	!A-c	§8[§b226§8] §6Player23 §7❤
+75	0	!D-m	
+76	0	!D-d	
+77	0	!B-f	
+78	0	!A-b	§8[§c450§8] §bPlayer06 §6ᛃ
+79	0	!B-g	§e§lProfile: §aTestProfile
+80	0	!D-k	 Gemstone Fortune: §6140
+81	0	!A-p	§8[§e106§8] §aPlayer11
+82	0	!C-e	 3) §7EMPTY
+83	0	!A-h	§8[§712§8] §bPlayer31 §6Ⓑ
+84	0	Player31	<null>
+85	0	!B-a	               §3§lInfo
+86	0	!B-m	 §7[Lvl 100] §5Scatha
+87	0	!B-t	
+88	0	!B-s	
+89	0	!D-b	§d§lPity:
+90	0	!A-f	§8[§5367§8] §bPlayer19 §7ᛃ§7♲
+91	0	Player25	<null>
+92	0	!D-n	
+93	0	!B-b	§b§lArea: §7Dwarven Mines
+94	0	Player20	<null>
+95	0	!C-g	 5) §7EMPTY
+96	0	Player17	<null>
+97	0	Player07	<null>
+98	0	!A-e	§8[§c474§8] §bPlayer26
+99	0	!B-d	 Gems: §a0
+100	0	!A-i	§8[§f69§8] §bPlayer24
+101	0	Player26	<null>
+102	0	Player46	<null>
