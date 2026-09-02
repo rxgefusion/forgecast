@@ -52,25 +52,32 @@ object ForgeCast : ClientModInitializer {
 		// Commands the client handles by itself. Typing one is intercepted
 		// locally and never sent to the server.
 		ClientCommandRegistrationCallback.EVENT.register { dispatcher, _ ->
-			dispatcher.register(
-				LiteralArgumentBuilder.literal<FabricClientCommandSource>("forgecast")
-					.then(
-						LiteralArgumentBuilder.literal<FabricClientCommandSource>("dump")
-							.executes { context -> dumpTabList(context.source) }
-					)
-					.then(
-						LiteralArgumentBuilder.literal<FabricClientCommandSource>("status")
-							.executes { context -> printStatus(context.source) }
-					)
-					.then(
-						LiteralArgumentBuilder.literal<FabricClientCommandSource>("toggle")
-							.executes { context -> toggleHud(context.source) }
-					)
-					.then(
-						LiteralArgumentBuilder.literal<FabricClientCommandSource>("dumpgui")
-							.executes { context -> dumpGui(context.source) }
-					)
-			)
+			val root = LiteralArgumentBuilder.literal<FabricClientCommandSource>("forgecast")
+				.then(
+					LiteralArgumentBuilder.literal<FabricClientCommandSource>("status")
+						.executes { context -> printStatus(context.source) }
+				)
+				.then(
+					LiteralArgumentBuilder.literal<FabricClientCommandSource>("toggle")
+						.executes { context -> toggleHud(context.source) }
+				)
+
+			// The capture tools are not merely refused in a release build - they
+			// are never registered, so they do not exist to be tab-completed or
+			// stumbled into. Execution is gated again inside each command, so
+			// switching them off in config takes effect without a restart.
+			if (DevTools.inDevelopmentEnvironment) {
+				root.then(
+					LiteralArgumentBuilder.literal<FabricClientCommandSource>("dump")
+						.executes { context -> dumpTabList(context.source) }
+				)
+				root.then(
+					LiteralArgumentBuilder.literal<FabricClientCommandSource>("dumpgui")
+						.executes { context -> dumpGui(context.source) }
+				)
+			}
+
+			dispatcher.register(root)
 		}
 
 		// Draws after the vanilla HUD elements. The element itself decides each
@@ -282,6 +289,11 @@ object ForgeCast : ClientModInitializer {
 	 * Returns a Brigadier result code: 1 for success, 0 for "did nothing".
 	 */
 	private fun dumpTabList(source: FabricClientCommandSource): Int {
+		DevTools.unavailableReason()?.let { reason ->
+			source.sendError(Component.literal("ForgeCast: $reason."))
+			return 0
+		}
+
 		val client = Minecraft.getInstance()
 
 		// getConnection() is null when not connected to any server.
@@ -354,6 +366,10 @@ object ForgeCast : ClientModInitializer {
 	private const val GUI_CAPTURE_INTERVAL_MS = 500L
 
 	private fun captureOpenGui(client: Minecraft) {
+		// The most expensive thing this mod can do: every slot of every open
+		// container, with every tooltip rebuilt. Off unless explicitly asked for.
+		if (!DevTools.available) return
+
 		val screen = client.screen
 		if (screen !is AbstractContainerScreen<*>) return
 
@@ -415,6 +431,11 @@ object ForgeCast : ClientModInitializer {
 	}
 
 	private fun dumpGui(source: FabricClientCommandSource): Int {
+		DevTools.unavailableReason()?.let { reason ->
+			source.sendError(Component.literal("ForgeCast: $reason."))
+			return 0
+		}
+
 		val client = Minecraft.getInstance()
 
 		// If a container somehow is open (a macro, say), take a fresh capture.
