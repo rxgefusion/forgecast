@@ -1,0 +1,46 @@
+plugins {
+	id 'net.fabricmc.fabric-loom' version "${loom_version}"
+	id 'org.jetbrains.kotlin.jvm' version "${kotlin_version}"
+}
+
+repositories {
+	// Loom adds the Minecraft/Fabric repositories automatically.
+	// Add extra repositories here only when depending on other people's mods.
+	mavenCentral()
+}
+
+dependencies {
+	// Versions live in gradle.properties
+	minecraft "com.mojang:minecraft:${project.minecraft_version}"
+	implementation "net.fabricmc:fabric-loader:${project.loader_version}"
+
+	// Fabric API - technically optional, but you almost certainly want it.
+	implementation "net.fabricmc.fabric-api:fabric-api:${project.fabric_api_version}"
+
+	// Lets Minecraft load a mod written in Kotlin.
+	implementation "net.fabricmc:fabric-language-kotlin:${project.fabric_language_kotlin_version}"
+}
+
+processResources {
+	def version = project.version
+	inputs.property "version", version
+
+	// Substitutes ${version} inside fabric.mod.json with the version above.
+	filesMatching("fabric.mod.json") {
+		expand "version": version
+	}
+}
+
+tasks.withType(JavaCompile).configureEach {
+	it.options.release = 25
+}
+
+kotlin {
+	jvmToolchain(25)
+}
+
+java {
+	withSourcesJar()
+	sourceCompatibility = JavaVersion.VERSION_25
+	targetCompatibility = JavaVersion.VERSION_25
+}
