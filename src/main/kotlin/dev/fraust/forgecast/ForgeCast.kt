@@ -6,8 +6,11 @@ import net.fabricmc.fabric.api.client.command.v2.ClientCommandRegistrationCallba
 import net.fabricmc.fabric.api.client.command.v2.FabricClientCommandSource
 import net.minecraft.ChatFormatting
 import net.minecraft.client.Minecraft
+import net.minecraft.client.multiplayer.ClientPacketListener
+import net.minecraft.client.multiplayer.PlayerInfo
 import net.minecraft.network.chat.Component
 import net.minecraft.network.chat.FormattedText
+import net.minecraft.network.chat.MutableComponent
 import net.minecraft.network.chat.Style
 import net.minecraft.network.chat.TextColor
 import org.slf4j.LoggerFactory
@@ -40,8 +43,8 @@ object ForgeCast : ClientModInitializer {
 	private val FILE_STAMP: DateTimeFormatter = DateTimeFormatter.ofPattern("yyyyMMdd-HHmmss-SSS")
 
 	override fun onInitializeClient() {
-		// Registers a command that the client handles by itself. Typing
-		// "/forgecast dump" is intercepted locally and never sent to the server.
+		// Commands the client handles by itself. Typing one is intercepted
+		// locally and never sent to the server.
 		ClientCommandRegistrationCallback.EVENT.register { dispatcher, _ ->
 			dispatcher.register(
 				LiteralArgumentBuilder.literal<FabricClientCommandSource>("forgecast")
@@ -49,10 +52,140 @@ object ForgeCast : ClientModInitializer {
 						LiteralArgumentBuilder.literal<FabricClientCommandSource>("dump")
 							.executes { context -> dumpTabList(context.source) }
 					)
+					.then(
+						LiteralArgumentBuilder.literal<FabricClientCommandSource>("status")
+							.executes { context -> printStatus(context.source) }
+					)
 			)
 		}
-		logger.info("ForgeCast ready - /forgecast dump is registered")
+		logger.info("ForgeCast ready - /forgecast dump and /forgecast status are registered")
 	}
+
+	// ------------------------------------------------------- reading the game
+	//
+	// Both commands go through these helpers, so the text a dump records is
+	// exactly the text the parser sees live. Without that shared path a fixture
+	// could pass its tests while the live command quietly behaved differently.
+
+	private fun profileNameOf(info: PlayerInfo): String =
+		info.profile.name ?: "<no-profile-name>"
+
+	private fun rowTextOf(info: PlayerInfo): String {
+		// getTabListDisplayName() is null when the server sent no custom name,
+		// in which case the game falls back to the profile name.
+		val display = info.tabListDisplayName
+		return if (display == null) "<null>" else toLegacyString(display)
+	}
+
+	/** The live tab list, in the shape [ForgeParser] expects. */
+	private fun readTabRows(connection: ClientPacketListener): List<TabRow> =
+		connection.listedOnlinePlayers.map { info ->
+			TabRow(profileNameOf(info), rowTextOf(info))
+		}
+
+	// --------------------------------------------------- /forgecast status
+
+	/**
+	 * Reads the live tab list, runs it through [ForgeParser] unchanged, and
+	 * prints one chat line per forge slot.
+	 */
+	private fun printStatus(source: FabricClientCommandSource): Int {
+		val connection = Minecraft.getInstance().connection
+		if (connection == null) {
+			source.sendError(Component.literal("ForgeCast: not connected to a server."))
+			return 0
+		}
+
+		val snapshot = ForgeParser.parse(readTabRows(connection))
+
+		if (!snapshot.foundSection) {
+			source.sendFeedback(
+				prefix().append(
+					Component.literal("No Forges section in the tab list here.")
+						.withStyle(ChatFormatting.GRAY)
+				)
+			)
+			return 1
+		}
+
+		val slots = snapshot.slots
+		var i = 0
+		while (i < slots.size) {
+			if (didNotRender(slots[i])) {
+				// Collapse a run of missing slots into one line: "6-7) not visible".
+				var end = i
+				while (end + 1 < slots.size && didNotRender(slots[end + 1])) end++
+				source.sendFeedback(notVisibleLine(slots[i].slot, slots[end].slot))
+				i = end + 1
+			} else {
+				source.sendFeedback(slotLine(slots[i]))
+				i++
+			}
+		}
+		return 1
+	}
+
+	/**
+	 * A slot the server never rendered, as opposed to one whose text we failed
+	 * to recognise. Only the former is "not visible"; the latter still has text
+	 * worth showing.
+	 */
+	private fun didNotRender(slot: ForgeSlot): Boolean =
+		slot.state == ForgeSlotState.UNKNOWN && slot.rawText == null
+
+	private fun prefix(): MutableComponent =
+		Component.literal("[").withStyle(ChatFormatting.DARK_GRAY)
+			.append(Component.literal("ForgeCast").withStyle(ChatFormatting.GOLD))
+			.append(Component.literal("] ").withStyle(ChatFormatting.DARK_GRAY))
+
+	private fun notVisibleLine(from: Int, to: Int): Component {
+		val label = if (from == to) "$from) " else "$from-$to) "
+		return prefix()
+			.append(Component.literal(label).withStyle(ChatFormatting.DARK_GRAY))
+			.append(
+				Component.literal("not visible (list truncated)")
+					.withStyle(ChatFormatting.DARK_GRAY)
+			)
+	}
+
+	private fun slotLine(slot: ForgeSlot): Component {
+		val line = prefix()
+			.append(Component.literal("${slot.slot}) ").withStyle(ChatFormatting.GRAY))
+
+		when (slot.state) {
+			ForgeSlotState.IN_PROGRESS -> {
+				line.append(Component.literal(slot.itemName ?: "?").withStyle(ChatFormatting.WHITE))
+				line.append(Component.literal(" - ").withStyle(ChatFormatting.DARK_GRAY))
+				line.append(
+					Component.literal(slot.remaining?.toString() ?: "?")
+						.withStyle(ChatFormatting.AQUA)
+				)
+			}
+
+			ForgeSlotState.READY -> {
+				line.append(Component.literal(slot.itemName ?: "?").withStyle(ChatFormatting.WHITE))
+				line.append(Component.literal(" - ").withStyle(ChatFormatting.DARK_GRAY))
+				line.append(Component.literal("READY").withStyle(ChatFormatting.GREEN))
+			}
+
+			ForgeSlotState.EMPTY -> {
+				line.append(Component.literal("empty").withStyle(ChatFormatting.DARK_GRAY))
+			}
+
+			ForgeSlotState.UNKNOWN -> {
+				// Rendered, but in a shape we do not recognise. Show the text so
+				// it can be reported rather than silently dropped.
+				line.append(Component.literal("unrecognised").withStyle(ChatFormatting.RED))
+				slot.rawText?.let {
+					line.append(Component.literal(" - ").withStyle(ChatFormatting.DARK_GRAY))
+					line.append(Component.literal(it).withStyle(ChatFormatting.GRAY))
+				}
+			}
+		}
+		return line
+	}
+
+	// ----------------------------------------------------- /forgecast dump
 
 	/**
 	 * Writes every current tab-list entry to a new timestamped file inside
@@ -90,16 +223,10 @@ object ForgeCast : ClientModInitializer {
 		out.append("--\n")
 
 		entries.forEachIndexed { index, info ->
-			// getTabListDisplayName() is null when the server sent no custom
-			// name, in which case the game falls back to the profile name.
-			val display = info.tabListDisplayName
-			val raw = if (display == null) "<null>" else toLegacyString(display)
-			val profileName = info.profile.name ?: "<no-profile-name>"
-
 			out.append(index + 1).append('\t')
 				.append(info.tabListOrder).append('\t')
-				.append(profileName).append('\t')
-				.append(raw).append('\n')
+				.append(profileNameOf(info)).append('\t')
+				.append(rowTextOf(info)).append('\n')
 		}
 
 		// UTF-8 matters: section signs are not ASCII.
@@ -111,6 +238,8 @@ object ForgeCast : ClientModInitializer {
 		)
 		return 1
 	}
+
+	// ------------------------------------------------------ text conversion
 
 	/**
 	 * Rebuilds a legacy section-sign string from a [Component].
