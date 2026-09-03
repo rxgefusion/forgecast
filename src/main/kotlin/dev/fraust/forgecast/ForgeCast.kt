@@ -358,6 +358,10 @@ object ForgeCast : ClientModInitializer {
 				line.append(Component.literal("empty").withStyle(ChatFormatting.DARK_GRAY))
 			}
 
+			ForgeSlotState.LOCKED -> {
+				line.append(Component.literal("locked").withStyle(ChatFormatting.DARK_GRAY))
+			}
+
 			ForgeSlotState.UNKNOWN -> {
 				// Rendered, but in a shape we do not recognise. Show the text so
 				// it can be reported rather than silently dropped.

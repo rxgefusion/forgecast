@@ -1,0 +1,87 @@
+ForgeCast tab list dump
+taken	2026-09-02T19:12:21.537723600
+entries	82
+columns	index	order	profile	raw
+--
+1	0	!B-n	
+2	0	!C-o	
+3	0	!D-s	§b§lMinions: §f14§7/14
+4	0	!D-b	§9§lForges:
+5	0	!C-f	§e§lProfile: §aTestProfile §7♲
+6	0	!D-r	
+7	0	!D-n	 §bMarina: §b|§f||||||||| §f(2%)
+8	0	!D-h	 6) §cLOCKED
+9	0	!D-f	 4) §5Refined Diamond§7: §b3h
+10	0	!C-r	
+11	0	!B-s	
+12	0	!B-r	
+13	0	!B-a	          §5§lGuests §f(0)
+14	0	!B-h	
+15	0	!A-h	
+16	0	!D-e	 3) §5Refined Diamond§7: §b3h
+17	0	!C-h	 Bank: §60§7 / §60
+18	0	!C-c	 Server: §8mini00XX
+19	0	!B-l	
+20	0	!B-g	
+21	0	!A-k	
+22	0	!A-t	
+23	0	!B-d	
+24	0	!B-c	
+25	0	!A-s	
+26	0	!A-p	
+27	0	!C-i	 Interest: §e25 Hours§6 (0)
+28	0	!A-c	§8[§e94§8] §bPlayer48 §7♲
+29	0	!B-k	
+30	0	!C-m	 §e317,990.4§6/§e561.7k XP §6(56.6%)
+31	0	!B-i	
+32	0	!C-q	
+33	0	!A-i	
+34	0	!D-i	 7) §cLOCKED
+35	0	!D-m	 §cFinnegan: §c||||§f|||||| §f(35%)
+36	0	!B-o	
+37	0	!B-f	
+38	0	Player06	<null>
+39	0	!C-k	§e§lPet:
+40	0	!A-a	          §b§lCoop §f(3)
+41	0	!D-j	
+42	0	!C-j	
+43	0	!B-t	
+44	0	!A-r	
+45	0	!A-d	§bZetrez §7(Offline 21h§7)
+46	0	!C-e	
+47	0	!A-e	
+48	0	!D-a	               §3§lInfo
+49	0	!A-o	
+50	0	!B-m	
+51	0	!A-l	
+52	0	!A-f	
+53	0	!A-g	
+54	0	!B-j	
+55	0	!A-b	§8[§e101§8] §bPlayer06 §7♲
+56	0	!D-q	 Ends In: §e4d
+57	0	!D-c	 1) §6Refined Titanium§7: §b6h
+58	0	!C-g	 SB Level§f: §8[§e1§8] §b0§3/§b100 XP
+59	0	!D-o	
+60	0	!A-m	
+61	0	!C-b	§b§lArea: §7Private Island
+62	0	Player48	<null>
+63	0	!C-l	 §7[Lvl 84] §6Mithril Golem
+64	0	!C-s	
+65	0	!D-d	 2) §6Refined Titanium§7: §b6h
+66	0	!C-p	
+67	0	!A-q	
+68	0	!D-p	§e§lEvent: §5Year of the Witch
+69	0	!D-t	 6x Fishing VI §7[§aACTIVE§7]
+70	0	!C-n	
+71	0	!B-b	
+72	0	!D-g	 5) §cLOCKED
+73	0	!D-k	§e§lElection: §b24h
+74	0	!C-t	
+75	0	!C-a	               §3§lInfo
+76	0	!B-e	
+77	0	!A-j	
+78	0	!C-d	 Gems: §a0
+79	0	!B-p	
+80	0	!B-q	
+81	0	!A-n	
+82	0	!D-l	 §aCole: §a|||||||§f||| §f(61%)

@@ -31,6 +31,16 @@ enum class ForgeSlotState {
 	READY,
 
 	/**
+	 * Not unlocked on this account yet.
+	 *
+	 * A KNOWN state, deliberately distinct from [UNKNOWN]. Slots unlock in
+	 * order through Heart of the Mountain, so locked ones sit at the end of the
+	 * list. Displaying them as "unrecognised" was wrong: nothing is wrong, the
+	 * slot simply does not exist yet.
+	 */
+	LOCKED,
+
+	/**
 	 * We do not know. Either the row never rendered (the tab list truncates
 	 * when a column runs out of rows) or its text did not match any shape we
 	 * recognise. NEVER treat this as empty.
@@ -220,9 +230,13 @@ object ForgeParser {
 		val number = match.groupValues[1].toIntOrNull() ?: return null
 		val body = match.groupValues[2].trim()
 
-		// Shape A: no colon.
+		// Shape A: a bare word with no colon. Both of these are real states, not
+		// the absence of one.
 		if (body.equals("EMPTY", ignoreCase = true)) {
 			return ForgeSlot(number, ForgeSlotState.EMPTY, rawText = text)
+		}
+		if (body.equals("LOCKED", ignoreCase = true)) {
+			return ForgeSlot(number, ForgeSlotState.LOCKED, rawText = text)
 		}
 
 		// Shape B: "<item>: <value>". Split on the LAST separator in case an

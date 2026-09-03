@@ -44,6 +44,7 @@ object ForgeHud : HudElement {
 	private const val COLOR_REMEMBERED_READY = 0xFF3E9E5E.toInt()
 	private const val COLOR_AGE = 0xFF5A5A5A.toInt()
 	private const val COLOR_NOT_VISIBLE = 0xFF4A4A4A.toInt()
+	private const val COLOR_LOCKED = 0xFF8A6A6A.toInt()
 
 	private val memory = ForgeMemory()
 
@@ -81,7 +82,7 @@ object ForgeHud : HudElement {
 		refreshFromSharedReading()
 
 		val slots = cached ?: return
-		draw(graphics, client.font, slots)
+		draw(graphics, client.font, withoutTrailingLocked(slots))
 	}
 
 	/**
@@ -104,6 +105,24 @@ object ForgeHud : HudElement {
 		}
 
 		cached = memory.update(snapshot, TabListSource.profile, Instant.now())
+	}
+
+	/**
+	 * Drops locked slots from the END of the list only.
+	 *
+	 * Slots unlock in order, so on an account without all seven the locked ones
+	 * are always trailing, and listing them is clutter rather than information.
+	 *
+	 * Trailing only, and LOCKED only. A locked slot appearing mid-list would
+	 * mean an assumption is wrong, so it is shown. And UNKNOWN is never hidden:
+	 * if unrecognised rows became invisible, the next thing Hypixel changes
+	 * would vanish silently, which is the exact failure this parser exists to
+	 * prevent.
+	 */
+	private fun withoutTrailingLocked(slots: List<MergedSlot>): List<MergedSlot> {
+		var end = slots.size
+		while (end > 0 && slots[end - 1].state == ForgeSlotState.LOCKED) end--
+		return slots.subList(0, end)
 	}
 
 	private fun draw(graphics: GuiGraphicsExtractor, font: Font, slots: List<MergedSlot>) {
@@ -182,6 +201,10 @@ object ForgeHud : HudElement {
 					age,
 				)
 
+				// A catch-all "else" here used to render a remembered LOCKED slot
+				// as "~empty", which is a different and wrong claim.
+				ForgeSlotState.LOCKED -> listOfNotNull(number, "~locked" to COLOR_LOCKED, age)
+
 				else -> listOfNotNull(number, "~empty" to COLOR_NOT_VISIBLE, age)
 			}
 		}
@@ -200,6 +223,11 @@ object ForgeHud : HudElement {
 			)
 
 			ForgeSlotState.EMPTY -> listOf(number, "empty" to COLOR_EMPTY)
+
+			// Only reached for a locked slot that is NOT at the end of the list.
+			// Trailing ones are dropped before drawing; one appearing mid-list
+			// would be an anomaly worth seeing.
+			ForgeSlotState.LOCKED -> listOf(number, "locked" to COLOR_LOCKED)
 
 			// Rendered but unrecognised. Shown so it can be reported.
 			ForgeSlotState.UNKNOWN -> listOf(number, "unrecognised" to COLOR_UNRECOGNISED)

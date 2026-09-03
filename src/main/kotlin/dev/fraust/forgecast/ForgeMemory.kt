@@ -142,7 +142,9 @@ class ForgeMemory(
 	 * understood would be inventing data.
 	 */
 	private fun isUnderstood(slot: ForgeSlot): Boolean = when (slot.state) {
-		ForgeSlotState.IN_PROGRESS, ForgeSlotState.READY, ForgeSlotState.EMPTY -> true
+		ForgeSlotState.IN_PROGRESS, ForgeSlotState.READY,
+		ForgeSlotState.EMPTY, ForgeSlotState.LOCKED,
+		-> true
 		ForgeSlotState.UNKNOWN -> false
 	}
 
@@ -185,6 +187,13 @@ class ForgeMemory(
 		return when (memory.state) {
 			ForgeSlotState.EMPTY -> MergedSlot(
 				slot.slot, SlotSource.REMEMBERED, ForgeSlotState.EMPTY,
+				observedAt = memory.observedAt,
+			)
+
+			// A locked slot cannot quietly become unlocked while out of sight -
+			// that needs a Heart of the Mountain purchase, which we would see.
+			ForgeSlotState.LOCKED -> MergedSlot(
+				slot.slot, SlotSource.REMEMBERED, ForgeSlotState.LOCKED,
 				observedAt = memory.observedAt,
 			)
 
