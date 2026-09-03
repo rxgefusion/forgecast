@@ -1,34 +1,78 @@
 package dev.fraust.forgecast
 
-/** A slot that has just finished, ready to be announced once. */
-data class ForgeCompletion(val slot: Int, val itemName: String?)
+/** How sure the mod is that a slot has finished. */
+enum class AlertKind {
+	/** A sensor saw it running and then saw it Ready. */
+	CONFIRMED,
+
+	/**
+	 * A GUI reading passed its finish time while nothing could see the slot.
+	 *
+	 * Not a guess: the finish time came from the Forge screen and is exact to
+	 * the second, and collecting the item requires opening that screen again,
+	 * which would have refreshed the reading. But nothing has actually looked,
+	 * so it is announced as expectation rather than fact.
+	 */
+	FORECAST,
+}
+
+/** A slot that has finished, ready to be announced once. */
+data class ForgeCompletion(val slot: Int, val itemName: String?, val kind: AlertKind)
 
 /**
  * Notices when a forge slot finishes, and says so exactly once.
  *
  * Reads the arbitrated result; it does not parse or decide anything itself.
  *
- * DISCOVERY IS NOT COMPLETION. Logging in to find slot 3 already Ready is not
- * something that happened while we were watching, and announcing it would be a
- * notification about the past. The distinction is not a timer or a heuristic:
- * a completion is a slot we saw RUNNING and then saw READY. A slot whose first
- * confirmed sighting is READY simply becomes the baseline and announces
- * nothing. There is no state in which we can be fooled about this, because the
+ * WHAT COUNTS AS SEEING A SLOT. Two things, and deliberately not a third:
+ *
+ *  - A live sighting: a sensor is rendering the slot right now.
+ *  - A GUI-derived belief: the Forge screen was read, so the finish time is
+ *    exact, and arithmetic on an exact instant is not guesswork.
+ *
+ * Not the third: a WIDGET memory that reached READY by arithmetic. Every widget
+ * value is floored, so an aged widget countdown really is a guess, and a guess
+ * must never ring a bell.
+ *
+ * DISCOVERY IS NOT COMPLETION. A completion is a slot seen RUNNING and then
+ * seen READY. Logging in to find slot 3 already Ready is one sighting, so it
+ * becomes the baseline and announces nothing. This cannot be fooled: the
  * evidence for a transition is two sightings, and at login we have one.
  *
- * ONLY CONFIRMED SIGHTINGS COUNT. A belief that reached READY by arithmetic -
- * a GUI reading that has passed its predicted finish with nothing able to
- * corroborate it - is not a sighting, and neither fires the alert nor updates
- * the baseline. Leaving the baseline alone is the important half: when the slot
- * does become visible again, the transition is still there to be found, and the
- * alert fires then. A guess defers the alert; it never cancels or triggers one.
+ * ONCE PER COMPLETION, WHICHEVER KIND FIRES FIRST. A forecast records READY as
+ * the baseline, so the confirmed sighting that follows is READY-to-READY, which
+ * is not a transition. No separate bookkeeping is needed to prevent the double
+ * announcement, and the slot can still fire again after it is seen running
+ * again - which means a new item was queued.
+ *
+ * NOTHING IS BELIEVED ON ONE READING. A state must hold for [required]
+ * consecutive readings before it counts. The mod already shipped a false
+ * warning built from a half-built tab list; here the same glitch would be
+ * worse, because a spurious "Ready!" would both announce wrongly AND record
+ * READY as the baseline, so the real completion would never be announced at
+ * all. Two seconds of delay on an eight-hour recipe is not a cost.
  */
-class CompletionWatcher {
+class CompletionWatcher(private val required: Int = DEFAULT_REQUIRED) {
+
+	companion object {
+		/**
+		 * Readings a state must survive before it is believed.
+		 *
+		 * Three, matching AdviceStabiliser. Readings are once a second, so this
+		 * is a two-second delay on something that took hours.
+		 */
+		const val DEFAULT_REQUIRED = 3
+	}
+
+	private data class Pending(val state: ForgeSlotState, val count: Int)
 
 	private var profile: String? = null
 
-	/** The last state we actually SAW for each slot. Never a guess. */
+	/** The last state we believed for each slot. Never from a single reading. */
 	private val lastSeen = mutableMapOf<Int, ForgeSlotState>()
+
+	/** States still proving themselves. */
+	private val pending = mutableMapOf<Int, Pending>()
 
 	/** How many slots have a baseline. For tests and diagnostics. */
 	val trackedSlots: Int get() = lastSeen.size
@@ -45,40 +89,63 @@ class CompletionWatcher {
 		if (profileName != profile) {
 			// A different profile is a different forge. Everything about it is a
 			// discovery, including slots that happen to be sitting Ready.
+			//
+			// The reading itself is NOT discarded - it falls through and is
+			// counted like any other. Returning here would silently consume one
+			// reading, so the first state after a profile change would need four
+			// readings to settle rather than three.
 			lastSeen.clear()
+			pending.clear()
 			profile = profileName
-			recordBaseline(beliefs)
-			return emptyList()
 		}
 
 		val finished = mutableListOf<ForgeCompletion>()
 
 		for (belief in beliefs) {
-			// Not being looked at: no sighting, so no transition and no baseline
-			// change. The alert waits rather than guessing.
-			if (!belief.observed) continue
+			val candidate = sightingOf(belief) ?: continue
+			val settled = settle(belief.slot, candidate) ?: continue
 
-			val previous = lastSeen.put(belief.slot, belief.state)
+			val previous = lastSeen.put(belief.slot, settled)
 
-			// First confirmed sighting of this slot. Baseline only.
+			// First belief about this slot. Baseline only.
 			if (previous == null) continue
 
-			if (previous == ForgeSlotState.IN_PROGRESS && belief.state == ForgeSlotState.READY) {
-				finished += ForgeCompletion(belief.slot, belief.itemName)
+			if (previous == ForgeSlotState.IN_PROGRESS && settled == ForgeSlotState.READY) {
+				finished += ForgeCompletion(
+					belief.slot,
+					belief.itemName,
+					if (belief.observed) AlertKind.CONFIRMED else AlertKind.FORECAST,
+				)
 			}
 		}
 
-		// Firing once needs no extra bookkeeping: the baseline is now READY, and
-		// READY to READY is not a transition. It can only fire again after the
-		// slot is seen running again, which means a new item was queued.
 		return finished
 	}
 
-	/** Records what is visible without announcing any of it. */
-	private fun recordBaseline(beliefs: List<ForgeBelief>) {
-		for (belief in beliefs) {
-			if (belief.observed) lastSeen[belief.slot] = belief.state
-		}
+	/**
+	 * What this belief says about the slot, or null if it says nothing usable.
+	 *
+	 * Null is not "no state" - it is "no evidence". A slot that says nothing
+	 * leaves its pending count and its baseline untouched, so a completion that
+	 * happens out of sight is still waiting to be found when the slot returns.
+	 */
+	private fun sightingOf(belief: ForgeBelief): ForgeSlotState? = when {
+		// Something is rendering the slot right now.
+		belief.observed -> belief.state
+
+		// The Forge screen was read, so the finish time is exact. Arithmetic on
+		// an exact instant is evidence; a floored widget countdown is not.
+		belief.source == ObservationSource.GUI -> belief.state
+
+		else -> null
+	}
+
+	/** Returns the state once it has held for [required] consecutive readings. */
+	private fun settle(slot: Int, state: ForgeSlotState): ForgeSlotState? {
+		val current = pending[slot]
+		val count = if (current?.state == state) current.count + 1 else 1
+		pending[slot] = Pending(state, count)
+		return if (count >= required) state else null
 	}
 
 	/**
@@ -89,6 +156,7 @@ class CompletionWatcher {
 	 */
 	fun reset() {
 		lastSeen.clear()
+		pending.clear()
 		profile = null
 	}
 }

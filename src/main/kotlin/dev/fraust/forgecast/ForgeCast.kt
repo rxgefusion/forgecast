@@ -153,20 +153,36 @@ object ForgeCast : ClientModInitializer {
 		val finished = completionWatcher.offer(beliefs, TabListSource.profile)
 		if (finished.isEmpty()) return
 
-		if (!ConfigHolder.current.completionAlertEnabled) return
+		val config = ConfigHolder.current
+		val toAnnounce = finished.filter {
+			when (it.kind) {
+				AlertKind.CONFIRMED -> config.completionAlertEnabled
+				AlertKind.FORECAST -> config.forecastAlertEnabled
+			}
+		}
+		if (toAnnounce.isEmpty()) return
 
 		val player = client.player ?: return
-		for (completion in finished) {
+		for (completion in toAnnounce) {
+			// Two signals separate fact from expectation: the wording and the
+			// colour. "should be ready" is not a hedge on "is ready" - nothing
+			// has looked at the slot, and the line says exactly that.
+			val (text, color) = when (completion.kind) {
+				AlertKind.CONFIRMED ->
+					"Slot ${completion.slot} finished: " to ChatFormatting.GREEN
+
+				AlertKind.FORECAST ->
+					"Slot ${completion.slot} should be ready now: " to ChatFormatting.YELLOW
+			}
 			player.sendSystemMessage(
 				prefix()
-					.append(Component.literal("Slot ${completion.slot} finished: ")
-						.withStyle(ChatFormatting.GREEN))
+					.append(Component.literal(text).withStyle(color))
 					.append(Component.literal(completion.itemName ?: "unknown item")
 						.withStyle(ChatFormatting.WHITE))
 			)
 		}
 
-		if (ConfigHolder.current.completionSoundEnabled) {
+		if (config.completionSoundEnabled) {
 			// One chime however many slots finished at once. Seven bells for a
 			// batch of seven would be the mod being obnoxious.
 			client.soundManager.play(

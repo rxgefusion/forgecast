@@ -41,6 +41,7 @@ class ConfigScreen(private val parent: Screen?) : Screen(Component.literal("Forg
 	private var hudButton: Button? = null
 	private var adviceButton: Button? = null
 	private var alertButton: Button? = null
+	private var forecastButton: Button? = null
 	private var soundButton: Button? = null
 
 	/**
@@ -87,7 +88,16 @@ class ConfigScreen(private val parent: Screen?) : Screen(Component.literal("Forg
 				ConfigHolder.update { it.copy(completionAlertEnabled = !it.completionAlertEnabled) }
 				alertButton?.message = Component.literal(alertLabel())
 				// The chime is meaningless without the alert it accompanies.
-				soundButton?.active = ConfigHolder.current.completionAlertEnabled
+				soundButton?.active = anyAlertOn()
+			}.bounds(left, y, BUTTON_WIDTH, BUTTON_HEIGHT).build()
+		)
+		y += BUTTON_HEIGHT + GAP
+
+		forecastButton = addRenderableWidget(
+			Button.builder(Component.literal(forecastLabel())) {
+				ConfigHolder.update { it.copy(forecastAlertEnabled = !it.forecastAlertEnabled) }
+				forecastButton?.message = Component.literal(forecastLabel())
+				soundButton?.active = anyAlertOn()
 			}.bounds(left, y, BUTTON_WIDTH, BUTTON_HEIGHT).build()
 		)
 		y += BUTTON_HEIGHT + GAP
@@ -98,7 +108,7 @@ class ConfigScreen(private val parent: Screen?) : Screen(Component.literal("Forg
 				soundButton?.message = Component.literal(soundLabel())
 			}.bounds(left, y, BUTTON_WIDTH, BUTTON_HEIGHT).build()
 		)
-		soundButton?.active = ConfigHolder.current.completionAlertEnabled
+		soundButton?.active = anyAlertOn()
 		y += BUTTON_HEIGHT + GAP
 
 		addRenderableWidget(
@@ -110,7 +120,14 @@ class ConfigScreen(private val parent: Screen?) : Screen(Component.literal("Forg
 	private fun hudLabel() = "Forge panel: ${onOff(ConfigHolder.current.hudEnabled)}"
 	private fun adviceLabel() = "Warn when forge data is incomplete: ${onOff(ConfigHolder.current.adviceEnabled)}"
 	private fun alertLabel() = "Tell me when a slot finishes: ${onOff(ConfigHolder.current.completionAlertEnabled)}"
+	private fun forecastLabel() =
+		"Tell me when one should be ready: ${onOff(ConfigHolder.current.forecastAlertEnabled)}"
+
 	private fun soundLabel() = "  ...with a sound: ${onOff(ConfigHolder.current.completionSoundEnabled)}"
+
+	/** The chime is meaningless when neither alert can speak. */
+	private fun anyAlertOn(): Boolean =
+		ConfigHolder.current.completionAlertEnabled || ConfigHolder.current.forecastAlertEnabled
 
 	override fun extractRenderState(
 		graphics: GuiGraphicsExtractor,

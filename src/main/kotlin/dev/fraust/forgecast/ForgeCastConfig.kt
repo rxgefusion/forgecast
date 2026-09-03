@@ -27,6 +27,15 @@ data class ForgeCastConfig(
 	 * confirmed change - which for a forge is a few times a day at most.
 	 */
 	val completionAlertEnabled: Boolean = true,
+	/**
+	 * A chat line when a GUI-derived finish time passes out of sight.
+	 *
+	 * On by default. This is the one thing the mod knows that nothing reading
+	 * only the tab list can know, and it is worded as expectation rather than
+	 * fact - so the honest failure is a line saying "should be ready" about
+	 * something already collected, not a false claim.
+	 */
+	val forecastAlertEnabled: Boolean = true,
 	/** A chime alongside it. Off: a sound nobody asked for is an intrusion. */
 	val completionSoundEnabled: Boolean = false,
 ) {
@@ -66,6 +75,7 @@ object ConfigCodec {
 	private const val KEY_HUD_SCALE = "hud.scale"
 	private const val KEY_ADVICE = "advice.enabled"
 	private const val KEY_ALERT = "alert.enabled"
+	private const val KEY_ALERT_FORECAST = "alert.forecast"
 	private const val KEY_ALERT_SOUND = "alert.sound"
 
 	fun encode(config: ForgeCastConfig): String = buildString {
@@ -77,6 +87,7 @@ object ConfigCodec {
 		appendLine("$KEY_HUD_SCALE=${config.hudScale}")
 		appendLine("$KEY_ADVICE=${config.adviceEnabled}")
 		appendLine("$KEY_ALERT=${config.completionAlertEnabled}")
+		appendLine("$KEY_ALERT_FORECAST=${config.forecastAlertEnabled}")
 		appendLine("$KEY_ALERT_SOUND=${config.completionSoundEnabled}")
 	}
 
@@ -98,6 +109,7 @@ object ConfigCodec {
 			hudScale = values.int(KEY_HUD_SCALE, defaults.hudScale),
 			adviceEnabled = values.bool(KEY_ADVICE, defaults.adviceEnabled),
 			completionAlertEnabled = values.bool(KEY_ALERT, defaults.completionAlertEnabled),
+			forecastAlertEnabled = values.bool(KEY_ALERT_FORECAST, defaults.forecastAlertEnabled),
 			completionSoundEnabled = values.bool(KEY_ALERT_SOUND, defaults.completionSoundEnabled),
 		).sanitised()
 	}
