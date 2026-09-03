@@ -57,7 +57,7 @@ object ForgeHud : HudElement {
 	 * empty screen - which is different from a REMEMBERED value, which is
 	 * labelled as remembered and shows its age.
 	 */
-	private var cached: List<MergedSlot>? = null
+	private var cached: List<ForgeBelief>? = null
 
 	override fun extractRenderState(graphics: GuiGraphicsExtractor, deltaTracker: DeltaTracker) {
 		val config = ConfigHolder.current
@@ -102,7 +102,9 @@ object ForgeHud : HudElement {
 			return
 		}
 
-		cached = ForgeStore.memory.update(snapshot, TabListSource.profile, Instant.now())
+		// The arbitrated view, not the widget parser's own. Where the Forge screen
+		// has been read, this shows the exact time instead of the floored one.
+		cached = ForgeStore.memory.believe(snapshot, TabListSource.profile, Instant.now())
 	}
 
 	/**
@@ -117,13 +119,13 @@ object ForgeHud : HudElement {
 	 * would vanish silently, which is the exact failure this parser exists to
 	 * prevent.
 	 */
-	private fun withoutTrailingLocked(slots: List<MergedSlot>): List<MergedSlot> {
+	private fun withoutTrailingLocked(slots: List<ForgeBelief>): List<ForgeBelief> {
 		var end = slots.size
 		while (end > 0 && slots[end - 1].state == ForgeSlotState.LOCKED) end--
 		return slots.subList(0, end)
 	}
 
-	private fun draw(graphics: GuiGraphicsExtractor, font: Font, slots: List<MergedSlot>) {
+	private fun draw(graphics: GuiGraphicsExtractor, font: Font, slots: List<ForgeBelief>) {
 		val config = ConfigHolder.current
 		val step = font.lineHeight + LINE_GAP
 		val nowMs = System.currentTimeMillis()
@@ -141,11 +143,11 @@ object ForgeHud : HudElement {
 
 		var i = 0
 		while (i < slots.size) {
-			if (slots[i].source == SlotSource.NONE) {
+			if (isBlank(slots[i])) {
 				// Collapse a run of blanks onto one line, indented further and
 				// dimmer so it cannot be mistaken for an empty slot.
 				var end = i
-				while (end + 1 < slots.size && slots[end + 1].source == SlotSource.NONE) end++
+				while (end + 1 < slots.size && isBlank(slots[end + 1])) end++
 				val label = if (i == end) "${slots[i].slot}" else "${slots[i].slot}-${slots[end].slot}"
 				drawSegments(
 					graphics, font, TRUNCATED_INDENT, y,
@@ -177,55 +179,69 @@ object ForgeHud : HudElement {
 		}
 	}
 
-	private fun segmentsFor(slot: MergedSlot, nowMs: Long): List<Pair<String, Int>> {
+	/** Nothing to say about this slot at all. */
+	private fun isBlank(slot: ForgeBelief): Boolean =
+		slot.confidence == Confidence.UNKNOWN && slot.source == null
+
+	/**
+	 * One line, in the confidence tier it has earned.
+	 *
+	 * Three tiers, and the difference is meant to be visible without being read:
+	 *
+	 *  - EXACT carries no marker and the bright colours. Only a GUI-derived time
+	 *    reaches this, so a bare number on the panel is always to the second.
+	 *  - APPROXIMATE always carries a "~". Every widget number is floored, so the
+	 *    "~" is literally true of it, not a hedge.
+	 *  - UNKNOWN says so in words.
+	 *
+	 * The "~" is the load-bearing signal because colour alone fails for a lot of
+	 * people. Dimming and the age suffix reinforce it; neither carries it alone.
+	 */
+	private fun segmentsFor(slot: ForgeBelief, nowMs: Long): List<Pair<String, Int>> {
 		val number = "${slot.slot}) " to COLOR_SLOT_NUMBER
 
-		if (slot.source == SlotSource.REMEMBERED) {
-			// Three signals mark a remembered value: the "~", the dimmer colours,
-			// and the age in brackets. None of them is load-bearing alone.
-			val age = slot.observedAt?.let { " (${ageText(it, nowMs)})" to COLOR_AGE }
-			return when (slot.state) {
-				ForgeSlotState.IN_PROGRESS -> listOfNotNull(
-					number,
-					"${slot.itemName ?: "?"} " to COLOR_REMEMBERED_ITEM,
-					"~${slot.remaining?.toString() ?: "?"}" to COLOR_REMEMBERED_TIME,
-					age,
-				)
-
-				ForgeSlotState.READY -> listOfNotNull(
-					number,
-					"${slot.itemName ?: "?"} " to COLOR_REMEMBERED_ITEM,
-					"~READY" to COLOR_REMEMBERED_READY,
-					age,
-				)
-
-				// A catch-all "else" here used to render a remembered LOCKED slot
-				// as "~empty", which is a different and wrong claim.
-				ForgeSlotState.LOCKED -> listOfNotNull(number, "~locked" to COLOR_LOCKED, age)
-
-				else -> listOfNotNull(number, "~empty" to COLOR_NOT_VISIBLE, age)
-			}
+		if (slot.confidence == Confidence.UNKNOWN) {
+			return listOf(number, "unrecognised" to COLOR_UNRECOGNISED)
 		}
 
+		val exact = slot.confidence == Confidence.EXACT
+		val tilde = if (exact) "" else "~"
+
+		// An age is shown only for something not being looked at right now. A live
+		// widget reading is approximate but current, so "~9h" with no age; a
+		// recalled one is "~9h (12m ago)" and dimmer.
+		val aged = !exact && slot.observedAt != null
+		val age = if (aged) slot.observedAt?.let { " (${ageText(it, nowMs)})" to COLOR_AGE } else null
+
+		val itemColor = if (aged) COLOR_REMEMBERED_ITEM else COLOR_ITEM
+		val timeColor = if (aged) COLOR_REMEMBERED_TIME else COLOR_TIME
+		val readyColor = if (aged) COLOR_REMEMBERED_READY else COLOR_READY
+
 		return when (slot.state) {
-			ForgeSlotState.IN_PROGRESS -> listOf(
+			ForgeSlotState.IN_PROGRESS -> listOfNotNull(
 				number,
-				"${slot.itemName ?: "?"} " to COLOR_ITEM,
-				(slot.remaining?.toString() ?: "?") to COLOR_TIME,
+				"${slot.itemName ?: "?"} " to itemColor,
+				"$tilde${slot.remaining?.toString() ?: "?"}" to timeColor,
+				age,
 			)
 
-			ForgeSlotState.READY -> listOf(
+			ForgeSlotState.READY -> listOfNotNull(
 				number,
-				"${slot.itemName ?: "?"} " to COLOR_ITEM,
-				"READY" to COLOR_READY,
+				"${slot.itemName ?: "?"} " to itemColor,
+				"${tilde}READY" to readyColor,
+				age,
 			)
 
-			ForgeSlotState.EMPTY -> listOf(number, "empty" to COLOR_EMPTY)
+			ForgeSlotState.EMPTY -> listOfNotNull(
+				number,
+				"${tilde}empty" to if (aged) COLOR_NOT_VISIBLE else COLOR_EMPTY,
+				age,
+			)
 
 			// Only reached for a locked slot that is NOT at the end of the list.
 			// Trailing ones are dropped before drawing; one appearing mid-list
 			// would be an anomaly worth seeing.
-			ForgeSlotState.LOCKED -> listOf(number, "locked" to COLOR_LOCKED)
+			ForgeSlotState.LOCKED -> listOfNotNull(number, "${tilde}locked" to COLOR_LOCKED, age)
 
 			// Rendered but unrecognised. Shown so it can be reported.
 			ForgeSlotState.UNKNOWN -> listOf(number, "unrecognised" to COLOR_UNRECOGNISED)

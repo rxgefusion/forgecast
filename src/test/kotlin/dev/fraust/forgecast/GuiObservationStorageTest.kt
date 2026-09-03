@@ -15,9 +15,9 @@ import kotlin.time.Duration.Companion.seconds
  *
  * Two sensors watch the same seven slots. The widget is always available but
  * rounded and truncatable; the GUI is exact to the second but only readable
- * while the Forge is open. This step stores BOTH, tagged by source. It
- * deliberately does not decide between them - that is the next step, and it
- * cannot be written sensibly if one reading has already overwritten the other.
+ * while the Forge is open. This layer stores BOTH, tagged by source, and does
+ * not decide between them - ForgeArbiter does that, and it could not if one
+ * reading had already overwritten the other on the way in.
  */
 class GuiObservationStorageTest {
 
@@ -129,17 +129,20 @@ class GuiObservationStorageTest {
 	}
 
 	@Test
-	fun `nothing arbitrates yet - the display ignores the GUI reading entirely`() {
+	fun `update stays the widget's own view, with no GUI reading mixed in`() {
 		val memory = ForgeMemory()
 		memory.recordGuiObservation(guiSnapshot(t0), "TestProfile", t0)
 
-		// Slot 1 is now truncated out of the widget view. If arbitration had been
-		// written early, the GUI reading would surface here. It must not yet.
+		// Slot 1 is truncated out of the widget view, and a GUI reading exists for
+		// it. update() must still report what the WIDGET can see - arbitration
+		// happens in believe(), one layer up, and needs this layer to stay honest
+		// about what the widget alone knows. See ArbitrationTest for the merged
+		// answer, where this same slot does report its exact time.
 		val merged = memory.update(widgetSnapshot(" 2) §7EMPTY"), "TestProfile", at(60))
 
 		assertEquals(
 			SlotSource.NONE, merged[0].source,
-			"the GUI reading is stored but must not yet reach the display",
+			"the widget layer must not quietly answer with a GUI reading",
 		)
 	}
 

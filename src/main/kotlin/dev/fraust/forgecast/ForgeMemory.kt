@@ -15,9 +15,8 @@ import kotlin.time.Duration.Companion.milliseconds
  *  - [GUI] is exact to the second and always shows all seven, but can only be
  *    read while the Forge screen is open.
  *
- * Recorded so that the arbitration step - not yet written - can decide what to
- * believe when the two disagree. It cannot make that judgement without knowing
- * which sensor said what.
+ * Recorded so [ForgeArbiter] can decide what to believe when the two disagree.
+ * It cannot make that judgement without knowing which sensor said what.
  */
 enum class ObservationSource { WIDGET, GUI }
 
@@ -123,14 +122,19 @@ class ForgeMemory(
 	/**
 	 * GUI readings, kept SEPARATELY from the widget ones.
 	 *
-	 * Nothing reads this for display yet. Storing both rather than merging them
-	 * is deliberate: the arbitration step decides what to believe when the two
-	 * disagree, and it cannot do that if one has already overwritten the other.
+	 * Kept apart rather than merged so [ForgeArbiter] can still tell which sensor
+	 * said what. Merging on write would destroy exactly the information the
+	 * decision needs.
 	 *
-	 * These do not expire. The widget's six-hour limit exists because a rounded
-	 * reading decays; an absolute finish time taken from the GUI does not.
-	 * Whether they should expire for some other reason is an arbitration
-	 * question, deferred with the rest of it.
+	 * THESE DO NOT EXPIRE ON A TIMER. They are removed when the widget disproves
+	 * them, and not otherwise. A forge slot can only be changed at the Forge
+	 * screen, and opening that screen re-reads it within a second, so within a
+	 * session a belief cannot go stale unnoticed. The widget's six-hour limit
+	 * exists because a rounded reading decays; an absolute instant does not.
+	 *
+	 * This reasoning depends on memory dying with the session. If these are ever
+	 * persisted to disk, a belief can outlive the session that checked it and a
+	 * time bound becomes necessary.
 	 */
 	private val guiObservations = mutableMapOf<Int, Remembered>()
 
@@ -176,8 +180,8 @@ class ForgeMemory(
 	/**
 	 * Records a reading of the open Forge screen.
 	 *
-	 * Changes nothing that is displayed. The GUI store sits beside the widget
-	 * store; merging them is the next step's job.
+	 * Stored beside the widget readings rather than over them; [believe] decides
+	 * between the two at read time.
 	 *
 	 * @param profileName taken from the tab list, because the Forge screen does
 	 *   not say which profile it belongs to. Null means we cannot tell, and
@@ -214,6 +218,40 @@ class ForgeMemory(
 			)
 		}
 	}
+
+	/**
+	 * What the mod actually believes, after weighing the two sensors.
+	 *
+	 * This is what the display should read. [update] still returns the widget's
+	 * own view underneath, because arbitration needs to know what the widget can
+	 * currently see in order to decide whether it disproves anything.
+	 *
+	 * A GUI belief the widget contradicts is DROPPED here rather than merely
+	 * ignored. Keeping it would mean re-deciding the same contradiction every
+	 * second, and worse, resurrecting the stale belief the moment the slot
+	 * truncated out of view again.
+	 */
+	fun believe(snapshot: ForgeSnapshot, profileName: String?, now: Instant): List<ForgeBelief> {
+		val widgetView = update(snapshot, profileName, now)
+
+		// Without a profile we cannot tell whose forge the stored readings belong
+		// to, so they are not applied - the same rule update() already follows.
+		if (profileName == null) {
+			return ForgeArbiter.arbitrate(widgetView, emptyMap(), now).beliefs
+		}
+
+		val result = ForgeArbiter.arbitrate(widgetView, guiBySlot(), now)
+		for (slot in result.invalidatedGuiSlots) guiObservations.remove(slot)
+		return result.beliefs
+	}
+
+	private fun guiBySlot(): Map<Int, StoredObservation> =
+		guiObservations.mapValues { (slot, value) ->
+			StoredObservation(
+				slot, ObservationSource.GUI, value.state,
+				value.itemName, value.finishAt, value.observedAt,
+			)
+		}
 
 	/**
 	 * Everything currently stored, from both sensors.
