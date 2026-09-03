@@ -40,6 +40,8 @@ class ConfigScreen(private val parent: Screen?) : Screen(Component.literal("Forg
 
 	private var hudButton: Button? = null
 	private var adviceButton: Button? = null
+	private var alertButton: Button? = null
+	private var soundButton: Button? = null
 
 	/**
 	 * Read once when the screen opens rather than every frame.
@@ -80,6 +82,25 @@ class ConfigScreen(private val parent: Screen?) : Screen(Component.literal("Forg
 		)
 		y += BUTTON_HEIGHT + GAP
 
+		alertButton = addRenderableWidget(
+			Button.builder(Component.literal(alertLabel())) {
+				ConfigHolder.update { it.copy(completionAlertEnabled = !it.completionAlertEnabled) }
+				alertButton?.message = Component.literal(alertLabel())
+				// The chime is meaningless without the alert it accompanies.
+				soundButton?.active = ConfigHolder.current.completionAlertEnabled
+			}.bounds(left, y, BUTTON_WIDTH, BUTTON_HEIGHT).build()
+		)
+		y += BUTTON_HEIGHT + GAP
+
+		soundButton = addRenderableWidget(
+			Button.builder(Component.literal(soundLabel())) {
+				ConfigHolder.update { it.copy(completionSoundEnabled = !it.completionSoundEnabled) }
+				soundButton?.message = Component.literal(soundLabel())
+			}.bounds(left, y, BUTTON_WIDTH, BUTTON_HEIGHT).build()
+		)
+		soundButton?.active = ConfigHolder.current.completionAlertEnabled
+		y += BUTTON_HEIGHT + GAP
+
 		addRenderableWidget(
 			Button.builder(Component.literal("Done")) { onClose() }
 				.bounds(left, y + GAP * 2, BUTTON_WIDTH, BUTTON_HEIGHT).build()
@@ -88,6 +109,8 @@ class ConfigScreen(private val parent: Screen?) : Screen(Component.literal("Forg
 
 	private fun hudLabel() = "Forge panel: ${onOff(ConfigHolder.current.hudEnabled)}"
 	private fun adviceLabel() = "Warn when forge data is incomplete: ${onOff(ConfigHolder.current.adviceEnabled)}"
+	private fun alertLabel() = "Tell me when a slot finishes: ${onOff(ConfigHolder.current.completionAlertEnabled)}"
+	private fun soundLabel() = "  ...with a sound: ${onOff(ConfigHolder.current.completionSoundEnabled)}"
 
 	override fun extractRenderState(
 		graphics: GuiGraphicsExtractor,

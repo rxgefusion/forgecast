@@ -20,6 +20,15 @@ data class ForgeCastConfig(
 	/** Percent, so the file never contains a locale-dependent decimal point. */
 	val hudScale: Int = 100,
 	val adviceEnabled: Boolean = true,
+	/**
+	 * A chat line when a slot finishes.
+	 *
+	 * On by default, unlike the panel. It draws nothing, and it speaks only on a
+	 * confirmed change - which for a forge is a few times a day at most.
+	 */
+	val completionAlertEnabled: Boolean = true,
+	/** A chime alongside it. Off: a sound nobody asked for is an intrusion. */
+	val completionSoundEnabled: Boolean = false,
 ) {
 	companion object {
 		const val MIN_SCALE = 50
@@ -56,6 +65,8 @@ object ConfigCodec {
 	private const val KEY_HUD_Y = "hud.y"
 	private const val KEY_HUD_SCALE = "hud.scale"
 	private const val KEY_ADVICE = "advice.enabled"
+	private const val KEY_ALERT = "alert.enabled"
+	private const val KEY_ALERT_SOUND = "alert.sound"
 
 	fun encode(config: ForgeCastConfig): String = buildString {
 		appendLine("# ForgeCast settings. Edited by the game; hand edits are read back on next start.")
@@ -65,6 +76,8 @@ object ConfigCodec {
 		appendLine("$KEY_HUD_Y=${config.hudY}")
 		appendLine("$KEY_HUD_SCALE=${config.hudScale}")
 		appendLine("$KEY_ADVICE=${config.adviceEnabled}")
+		appendLine("$KEY_ALERT=${config.completionAlertEnabled}")
+		appendLine("$KEY_ALERT_SOUND=${config.completionSoundEnabled}")
 	}
 
 	fun decode(text: String): ForgeCastConfig {
@@ -84,6 +97,8 @@ object ConfigCodec {
 			hudY = values.int(KEY_HUD_Y, defaults.hudY),
 			hudScale = values.int(KEY_HUD_SCALE, defaults.hudScale),
 			adviceEnabled = values.bool(KEY_ADVICE, defaults.adviceEnabled),
+			completionAlertEnabled = values.bool(KEY_ALERT, defaults.completionAlertEnabled),
+			completionSoundEnabled = values.bool(KEY_ALERT_SOUND, defaults.completionSoundEnabled),
 		).sanitised()
 	}
 

@@ -31,6 +31,21 @@ data class ForgeBelief(
 	/** Which sensor the belief rests on. Null when nothing is known. */
 	val source: ObservationSource? = null,
 	val observedAt: Instant? = null,
+	/**
+	 * Whether a sensor is looking at this slot RIGHT NOW and reporting this
+	 * state - as opposed to the state being recalled from memory or worked out
+	 * by arithmetic.
+	 *
+	 * A separate axis from [confidence], and the two genuinely come apart. A
+	 * live widget reading of "Ready!" is only APPROXIMATE, because every widget
+	 * value is floored - but it is directly observed. A GUI belief that has
+	 * passed its predicted finish with nothing able to confirm it is also
+	 * APPROXIMATE, and is not observed at all: it is a well-founded guess.
+	 *
+	 * The completion alert needs the second distinction, not the first. Firing
+	 * a chime on a guess is worse than silence.
+	 */
+	val observed: Boolean = false,
 )
 
 /**
@@ -140,6 +155,9 @@ object ForgeArbiter {
 			remaining = widget.remaining,
 			source = ObservationSource.WIDGET,
 			observedAt = widget.observedAt,
+			// A LIVE widget slot is being rendered by the server this instant.
+			// A REMEMBERED one is our own recollection.
+			observed = widget.source == SlotSource.LIVE,
 		)
 	}
 
@@ -201,6 +219,11 @@ object ForgeArbiter {
 		gui: StoredObservation,
 		now: Instant,
 	): ForgeBelief {
+		// Whether the widget is looking at this slot right now and saying the
+		// same thing. Used both for confidence and for [ForgeBelief.observed].
+		fun corroborated(state: ForgeSlotState) =
+			widget.source == SlotSource.LIVE && widget.state == state
+
 		val base = ForgeBelief(
 			slot = gui.slot,
 			state = gui.state,
@@ -209,6 +232,7 @@ object ForgeArbiter {
 			finishAt = gui.finishAt,
 			source = ObservationSource.GUI,
 			observedAt = gui.observedAt,
+			observed = corroborated(gui.state),
 		)
 
 		if (gui.state != ForgeSlotState.IN_PROGRESS || gui.finishAt == null) return base
@@ -220,13 +244,14 @@ object ForgeArbiter {
 
 		// The predicted finish has passed. The arithmetic is exact; whether
 		// anyone has collected it since is an assumption.
-		val widgetConfirms = widget.source == SlotSource.LIVE && widget.state == ForgeSlotState.READY
+		val widgetConfirms = corroborated(ForgeSlotState.READY)
 		return base.copy(
 			state = ForgeSlotState.READY,
 			remaining = null,
 			// Confirmed by a live widget reading, or resting on the assumption
 			// that nothing touched the forge. Never silently equal.
 			confidence = if (widgetConfirms) Confidence.EXACT else Confidence.APPROXIMATE,
+			observed = widgetConfirms,
 		)
 	}
 }

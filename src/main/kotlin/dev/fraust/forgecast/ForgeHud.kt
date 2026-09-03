@@ -210,8 +210,9 @@ object ForgeHud : HudElement {
 		// An age is shown only for something not being looked at right now. A live
 		// widget reading is approximate but current, so "~9h" with no age; a
 		// recalled one is "~9h (12m ago)" and dimmer.
-		val aged = !exact && slot.observedAt != null
-		val age = if (aged) slot.observedAt?.let { " (${ageText(it, nowMs)})" to COLOR_AGE } else null
+		val seenAt = if (exact) null else slot.observedAt
+		val aged = seenAt != null
+		val age = seenAt?.let { " (${ageText(it, nowMs)})" to COLOR_AGE }
 
 		val itemColor = if (aged) COLOR_REMEMBERED_ITEM else COLOR_ITEM
 		val timeColor = if (aged) COLOR_REMEMBERED_TIME else COLOR_TIME

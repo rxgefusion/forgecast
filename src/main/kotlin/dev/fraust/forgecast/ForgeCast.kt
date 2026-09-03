@@ -17,6 +17,8 @@ import net.minecraft.network.chat.MutableComponent
 import net.minecraft.network.chat.Style
 import net.minecraft.network.chat.TextColor
 import net.minecraft.resources.Identifier
+import net.minecraft.client.resources.sounds.SimpleSoundInstance
+import net.minecraft.sounds.SoundEvents
 import net.minecraft.world.item.Item
 import net.minecraft.world.item.TooltipFlag
 import net.minecraft.world.scores.DisplaySlot
@@ -106,9 +108,71 @@ object ForgeCast : ClientModInitializer {
 			captureOpenGui(client)
 			readForgeScreen(client, now)
 			checkForgeAdvice(client, now)
+			checkCompletions(client)
 		}
 
 		logger.info("ForgeCast ready - /forgecast opens settings")
+	}
+
+	// ---------------------------------------------------- completion alerts
+
+	private val completionWatcher = CompletionWatcher()
+	private var lastCompletionGeneration = -1L
+
+	/**
+	 * Announces slots that have just finished.
+	 *
+	 * Reads the same arbitrated result the panel draws, via the shared tab-list
+	 * reading, so the alert can never disagree with what is on screen.
+	 *
+	 * The watcher is fed even when the alert is switched off, so that turning it
+	 * on mid-session does not treat everything as newly finished. Only the
+	 * announcement is gated.
+	 */
+	private fun checkCompletions(client: Minecraft) {
+		// One judgement per reading, no more.
+		val generation = TabListSource.generation
+		if (generation == lastCompletionGeneration) return
+		lastCompletionGeneration = generation
+
+		if (!isOnHypixel(client)) {
+			// We were not watching while away, so nothing that happens next can
+			// be claimed as a transition we saw.
+			completionWatcher.reset()
+			return
+		}
+
+		val snapshot = TabListSource.snapshot ?: return
+		if (!snapshot.foundSection) return
+
+		// Never in a lobby. The scoreboard is the signal that survives the tab
+		// widgets being switched off.
+		if (!SkyBlockDetector.isSkyBlock(TabListSource.rows, sidebarTitle(client))) return
+
+		val beliefs = ForgeStore.memory.believe(snapshot, TabListSource.profile, Instant.now())
+		val finished = completionWatcher.offer(beliefs, TabListSource.profile)
+		if (finished.isEmpty()) return
+
+		if (!ConfigHolder.current.completionAlertEnabled) return
+
+		val player = client.player ?: return
+		for (completion in finished) {
+			player.sendSystemMessage(
+				prefix()
+					.append(Component.literal("Slot ${completion.slot} finished: ")
+						.withStyle(ChatFormatting.GREEN))
+					.append(Component.literal(completion.itemName ?: "unknown item")
+						.withStyle(ChatFormatting.WHITE))
+			)
+		}
+
+		if (ConfigHolder.current.completionSoundEnabled) {
+			// One chime however many slots finished at once. Seven bells for a
+			// batch of seven would be the mod being obnoxious.
+			client.soundManager.play(
+				SimpleSoundInstance.forUI(SoundEvents.NOTE_BLOCK_BELL.value(), 1.6f, 0.6f)
+			)
+		}
 	}
 
 	// ------------------------------------------------ reading the Forge screen
