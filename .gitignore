@@ -17,14 +17,26 @@ remappedSrc/
 .classpath
 .project
 
-# Secrets - a Hypixel API key is a UUID and is easy to paste somewhere and forget.
+# Secrets. A Hypixel API key is a UUID and is easy to paste somewhere and forget.
 # See SecretsGuardTest for where a key SHOULD live (never in this repo).
+#
+# These are deliberately NARROW. An earlier version used *secret*, *apikey* and
+# *credentials*, which matched SecretsGuardTest.kt itself and quietly kept the
+# guard out of the repository - a rule that disabled the thing enforcing it.
 .env
 *.pem
 *.p12
 *.keystore
-*api-key*
-*apikey*
-*secret*
-*credentials*
 *.token
+secrets.properties
+secrets.json
+secrets.txt
+api-key.txt
+apikey.txt
+api_key.txt
+credentials.json
+/secrets/
+
+# Source is never a secret, whatever it is called.
+!*.kt
+!*.java
