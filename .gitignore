@@ -16,3 +16,15 @@ remappedSrc/
 .settings/
 .classpath
 .project
+
+# Secrets - a Hypixel API key is a UUID and is easy to paste somewhere and forget.
+# See SecretsGuardTest for where a key SHOULD live (never in this repo).
+.env
+*.pem
+*.p12
+*.keystore
+*api-key*
+*apikey*
+*secret*
+*credentials*
+*.token
