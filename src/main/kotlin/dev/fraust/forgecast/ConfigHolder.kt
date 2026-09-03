@@ -24,7 +24,6 @@ object ConfigHolder {
 	/** Called once at startup. Never throws: worst case the defaults stand. */
 	fun load() {
 		current = ConfigStore.load(file)
-		applyTo()
 		logger.info("Settings loaded from {}", file.absolutePath)
 	}
 
@@ -36,14 +35,9 @@ object ConfigHolder {
 	 */
 	fun update(change: (ForgeCastConfig) -> ForgeCastConfig) {
 		current = change(current)
-		applyTo()
 		if (!ConfigStore.save(file, current)) {
 			logger.warn("Could not write settings to {} - they apply now but will not survive a restart", file)
 		}
 	}
 
-	/** Pushes settings into the places that read them outside the config object. */
-	private fun applyTo() {
-		DevTools.optedIn = current.devToolsEnabled
-	}
 }

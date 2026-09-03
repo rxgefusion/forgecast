@@ -20,7 +20,6 @@ data class ForgeCastConfig(
 	/** Percent, so the file never contains a locale-dependent decimal point. */
 	val hudScale: Int = 100,
 	val adviceEnabled: Boolean = true,
-	val devToolsEnabled: Boolean = false,
 ) {
 	companion object {
 		const val MIN_SCALE = 50
@@ -57,7 +56,6 @@ object ConfigCodec {
 	private const val KEY_HUD_Y = "hud.y"
 	private const val KEY_HUD_SCALE = "hud.scale"
 	private const val KEY_ADVICE = "advice.enabled"
-	private const val KEY_DEV_TOOLS = "devtools.enabled"
 
 	fun encode(config: ForgeCastConfig): String = buildString {
 		appendLine("# ForgeCast settings. Edited by the game; hand edits are read back on next start.")
@@ -67,7 +65,6 @@ object ConfigCodec {
 		appendLine("$KEY_HUD_Y=${config.hudY}")
 		appendLine("$KEY_HUD_SCALE=${config.hudScale}")
 		appendLine("$KEY_ADVICE=${config.adviceEnabled}")
-		appendLine("$KEY_DEV_TOOLS=${config.devToolsEnabled}")
 	}
 
 	fun decode(text: String): ForgeCastConfig {
@@ -87,7 +84,6 @@ object ConfigCodec {
 			hudY = values.int(KEY_HUD_Y, defaults.hudY),
 			hudScale = values.int(KEY_HUD_SCALE, defaults.hudScale),
 			adviceEnabled = values.bool(KEY_ADVICE, defaults.adviceEnabled),
-			devToolsEnabled = values.bool(KEY_DEV_TOOLS, defaults.devToolsEnabled),
 		).sanitised()
 	}
 

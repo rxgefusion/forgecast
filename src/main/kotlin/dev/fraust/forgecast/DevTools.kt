@@ -5,24 +5,27 @@ import net.fabricmc.loader.api.FabricLoader
 /**
  * Gate for the capture tools used to work out Hypixel's formats.
  *
- * These exist to gather data, not to play with. They write files, and the
- * screen capture walks every slot of every open container and builds each
- * tooltip - the most expensive thing this mod does. None of it belongs in a
- * build someone else runs.
+ * These are developer instruments, not player features, so they are not in the
+ * settings menu at all - that menu is for players.
  *
- * Two independent conditions, both required:
+ * Availability, in full:
  *
- *  1. [inDevelopmentEnvironment] - true only when launched from Gradle. A jar
- *     installed in a normal mods folder always reports false, so the commands
- *     are never even registered there. This is not a setting anyone can flip.
+ *  - **Development environment** (launched from Gradle): available, ON by
+ *    default. This is a working session; the tools should just be there.
+ *  - **Released jar**: NOT available, and the commands are not even registered,
+ *    so nothing about them is discoverable or reachable.
+ *  - **Released jar plus [LAUNCH_FLAG]**: available. This is the escape hatch
+ *    for debugging alongside one specific person - hand them the flag and they
+ *    can send a dump back.
  *
- *  2. [optedIn] - off by default even in development. Set from config, or from
- *     -Dforgecast.devtools=true for a single launch.
- *
- * The result is that the tools are off unless explicitly asked for, and
- * unreachable in a release build regardless of what any config file says.
+ * There is deliberately no username check. Restricting the tools to one account
+ * would make it impossible for a user with a bug to produce the dump that would
+ * explain it, which is the opposite of what they are for.
  */
 object DevTools {
+
+	/** Add `-Dforgecast.devtools=true` to the launch arguments. */
+	const val LAUNCH_FLAG = "forgecast.devtools"
 
 	/**
 	 * Whether the game was launched from the development environment.
@@ -32,23 +35,20 @@ object DevTools {
 	 */
 	val inDevelopmentEnvironment: Boolean = FabricLoader.getInstance().isDevelopmentEnvironment
 
-	/**
-	 * Whether the player has asked for the tools this session.
-	 *
-	 * Defaults to false. Config sets this during startup; the system property
-	 * is a convenience for a one-off launch.
-	 */
-	var optedIn: Boolean = System.getProperty("forgecast.devtools")?.equals("true", ignoreCase = true) == true
+	/** Whether the debugging launch flag was supplied. Also read once. */
+	val launchFlagSet: Boolean =
+		System.getProperty(LAUNCH_FLAG)?.equals("true", ignoreCase = true) == true
 
-	/** Whether the capture tools may do anything at all. */
-	val available: Boolean get() = inDevelopmentEnvironment && optedIn
+	/**
+	 * Whether the capture tools may run.
+	 *
+	 * On in a development build; off in a released one unless the launch flag
+	 * was deliberately supplied.
+	 */
+	val available: Boolean get() = inDevelopmentEnvironment || launchFlagSet
 
 	/** Human-readable reason the tools are unavailable, or null when they are. */
-	fun unavailableReason(): String? = when {
-		!inDevelopmentEnvironment ->
-			"the capture tools only exist in a development build"
-		!optedIn ->
-			"the capture tools are switched off - enable them in /forgecast"
-		else -> null
-	}
+	fun unavailableReason(): String? =
+		if (available) null
+		else "the capture tools are not enabled in this build"
 }

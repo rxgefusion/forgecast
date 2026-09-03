@@ -13,6 +13,10 @@ import net.minecraft.network.chat.Component
  * settings rules - the complaint it quotes is about spending half an hour
  * turning things off.
  *
+ * This screen is for PLAYERS. The capture tools are deliberately not here:
+ * they are developer instruments, gated by the launch environment rather than
+ * by a setting anyone could stumble into.
+ *
  * Every button reads its label from the live config and writes straight back
  * through [ConfigHolder], so a change is saved the moment it is made. There is
  * no apply or cancel to get wrong.
@@ -24,6 +28,9 @@ class ConfigScreen(private val parent: Screen?) : Screen(Component.literal("Forg
 		private const val BUTTON_HEIGHT = 20
 		private const val GAP = 4
 
+		private const val COLOR_PROBLEM = 0xFFFFAA00.toInt()
+		private const val COLOR_FIX = 0xFFAAAAAA.toInt()
+
 		/** Opens the screen on the next tick, which is safe from a command. */
 		fun open() {
 			val client = Minecraft.getInstance()
@@ -33,11 +40,20 @@ class ConfigScreen(private val parent: Screen?) : Screen(Component.literal("Forg
 
 	private var hudButton: Button? = null
 	private var adviceButton: Button? = null
-	private var devToolsButton: Button? = null
+
+	/**
+	 * Read once when the screen opens rather than every frame.
+	 *
+	 * The notice is a status line, not a live readout, and re-reading the whole
+	 * tab list per frame to render one sentence would be indefensible.
+	 */
+	private var problem: Pair<ForgeDataCase, Int>? = null
 
 	private fun onOff(on: Boolean): String = if (on) "ON" else "OFF"
 
 	override fun init() {
+		problem = ForgeCast.currentDataProblem(minecraft)
+
 		val left = width / 2 - BUTTON_WIDTH / 2
 		var y = height / 4
 
@@ -64,18 +80,6 @@ class ConfigScreen(private val parent: Screen?) : Screen(Component.literal("Forg
 		)
 		y += BUTTON_HEIGHT + GAP
 
-		// Only offered where the tools can actually run. In a release build they
-		// are not registered at all, so a button for them would be a lie.
-		if (DevTools.inDevelopmentEnvironment) {
-			devToolsButton = addRenderableWidget(
-				Button.builder(Component.literal(devToolsLabel())) {
-					ConfigHolder.update { it.copy(devToolsEnabled = !it.devToolsEnabled) }
-					devToolsButton?.message = Component.literal(devToolsLabel())
-				}.bounds(left, y, BUTTON_WIDTH, BUTTON_HEIGHT).build()
-			)
-			y += BUTTON_HEIGHT + GAP
-		}
-
 		addRenderableWidget(
 			Button.builder(Component.literal("Done")) { onClose() }
 				.bounds(left, y + GAP * 2, BUTTON_WIDTH, BUTTON_HEIGHT).build()
@@ -84,7 +88,6 @@ class ConfigScreen(private val parent: Screen?) : Screen(Component.literal("Forg
 
 	private fun hudLabel() = "Forge panel: ${onOff(ConfigHolder.current.hudEnabled)}"
 	private fun adviceLabel() = "Warn when forge data is incomplete: ${onOff(ConfigHolder.current.adviceEnabled)}"
-	private fun devToolsLabel() = "Capture tools (development): ${onOff(ConfigHolder.current.devToolsEnabled)}"
 
 	override fun extractRenderState(
 		graphics: GuiGraphicsExtractor,
@@ -95,14 +98,17 @@ class ConfigScreen(private val parent: Screen?) : Screen(Component.literal("Forg
 		super.extractRenderState(graphics, mouseX, mouseY, partialTick)
 		graphics.centeredText(font, title, width / 2, height / 4 - 20, 0xFFFFFFFF.toInt())
 
-		if (DevTools.inDevelopmentEnvironment) {
-			graphics.centeredText(
-				font,
-				Component.literal("Development build"),
-				width / 2,
-				height - 20,
-				0xFF808080.toInt(),
-			)
+		// The standing data problem, shown every time the menu is opened. The
+		// chat warning fires once and can be missed or dismissed; this cannot.
+		val current = problem
+		if (current != null) {
+			val (case, renderedSlots) = current
+			ForgeAdvice.summary(case, renderedSlots)?.let {
+				graphics.centeredText(font, Component.literal(it), width / 2, height - 44, COLOR_PROBLEM)
+			}
+			ForgeAdvice.fixPath(case)?.let {
+				graphics.centeredText(font, Component.literal(it), width / 2, height - 32, COLOR_FIX)
+			}
 		}
 	}
 

@@ -19,6 +19,7 @@ import net.minecraft.network.chat.TextColor
 import net.minecraft.resources.Identifier
 import net.minecraft.world.item.Item
 import net.minecraft.world.item.TooltipFlag
+import net.minecraft.world.scores.DisplaySlot
 import org.slf4j.LoggerFactory
 import java.io.File
 import java.time.LocalDateTime
@@ -71,7 +72,7 @@ object ForgeCast : ClientModInitializer {
 			// are never registered, so they do not exist to be tab-completed or
 			// stumbled into. Execution is gated again inside each command, so
 			// switching them off in config takes effect without a restart.
-			if (DevTools.inDevelopmentEnvironment) {
+			if (DevTools.available) {
 				root.then(
 					LiteralArgumentBuilder.literal<FabricClientCommandSource>("dump")
 						.executes { context -> dumpTabList(context.source) }
@@ -131,9 +132,10 @@ object ForgeCast : ClientModInitializer {
 
 		val rows = readTabRows(connection)
 
-		// Only SkyBlock's tab list carries a Profile row. Without one we are in
-		// a lobby or another game mode, where none of this advice applies.
-		if (ProfileReader.profileOf(rows) == null) {
+		// Two independent SkyBlock signals. The Profile row is itself a widget
+		// row, so it disappears exactly when the widgets are switched off - the
+		// case we most want to warn about. The scoreboard title survives that.
+		if (!SkyBlockDetector.isSkyBlock(rows, sidebarTitle(client))) {
 			adviceThrottle.reset()
 			return
 		}
@@ -165,6 +167,36 @@ object ForgeCast : ClientModInitializer {
 		// in which case the game falls back to the profile name.
 		val display = info.tabListDisplayName
 		return if (display == null) "<null>" else toLegacyString(display)
+	}
+
+	/**
+	 * The current forge-data problem, for the settings screen to display.
+	 *
+	 * Null means there is nothing to say - either all seven slots are readable,
+	 * or we cannot confirm we are on SkyBlock at all. Same conservatism as the
+	 * chat warning: silence beats a wrong claim.
+	 */
+	internal fun currentDataProblem(client: Minecraft): Pair<ForgeDataCase, Int>? {
+		if (!isOnHypixel(client)) return null
+		val connection = client.connection ?: return null
+		val rows = readTabRows(connection)
+		if (!SkyBlockDetector.isSkyBlock(rows, sidebarTitle(client))) return null
+
+		val snapshot = ForgeParser.parse(rows)
+		val case = ForgeAdvice.classify(rows, snapshot)
+		return if (case == ForgeDataCase.COMPLETE) null else case to snapshot.renderedSlots
+	}
+
+	/**
+	 * The sidebar scoreboard's title with formatting stripped, or null when
+	 * there is no sidebar.
+	 *
+	 * This is the SkyBlock signal that does not come from the widget system, so
+	 * it still answers when the widgets are switched off.
+	 */
+	internal fun sidebarTitle(client: Minecraft): String? {
+		val objective = client.level?.scoreboard?.getDisplayObjective(DisplaySlot.SIDEBAR) ?: return null
+		return ForgeParser.stripFormatting(toLegacyString(objective.displayName)).trim()
 	}
 
 	/**

@@ -7,11 +7,12 @@ import net.minecraft.client.input.MouseButtonEvent
 import net.minecraft.network.chat.Component
 
 /**
- * Drag-to-position editor for the forge panel.
+ * Drag-to-position and drag-to-resize editor for the forge panel.
  *
- * Shows a stand-in panel with sample rows, which the player drags to wherever
- * they want it and resizes with the two buttons. Position and scale are written
- * to config as they change, so closing the screen any way keeps the result.
+ * Drag the panel body to move it; drag the small handle at its bottom-right
+ * corner to resize. Resizing is uniform - [HudLayout.scalePercentFromDrag]
+ * reduces both axes to ONE number, so the panel keeps its shape no matter how
+ * the cursor moves and can never be stretched.
  *
  * Sample rows rather than live ones on purpose: the editor has to be usable off
  * SkyBlock, and an empty box would be impossible to aim.
@@ -26,42 +27,33 @@ class HudPositionScreen(private val parent: Screen?) : Screen(Component.literal(
 			"3) empty",
 			"4) Bejeweled Handle READY",
 		)
-		const val SCALE_STEP = 10
 		const val PADDING = 2
+
+		const val COLOR_PANEL_IDLE = 0x30FFFFFF.toInt()
+		const val COLOR_PANEL_ACTIVE = 0x60FFFFFF.toInt()
+		const val COLOR_HANDLE = 0xFFFFFFFF.toInt()
+		const val COLOR_HANDLE_ACTIVE = 0xFF55FF55.toInt()
 	}
 
-	/** Cursor offset inside the panel when the drag began, so it does not jump. */
+	private enum class Grab { NONE, MOVING, RESIZING }
+
+	private var grab = Grab.NONE
+
+	/** Cursor offset inside the panel when a move began, so it does not jump. */
 	private var dragOffsetX = 0
 	private var dragOffsetY = 0
-	private var dragging = false
 
-	private var scaleButton: Button? = null
+	private fun baseWidth(): Int = SAMPLE_ROWS.maxOf { font.width(it) } + PADDING * 2
+	private fun baseHeight(): Int = SAMPLE_ROWS.size * (font.lineHeight + 1) + PADDING * 2
 
-	private val scale: Float get() = ConfigHolder.current.hudScale / 100f
-
-	private fun panelWidth(): Int =
-		((SAMPLE_ROWS.maxOf { font.width(it) } + PADDING * 2) * scale).toInt()
-
-	private fun panelHeight(): Int =
-		((SAMPLE_ROWS.size * (font.lineHeight + 1) + PADDING * 2) * scale).toInt()
+	private fun panelWidth(): Int = HudLayout.scaled(baseWidth(), ConfigHolder.current.hudScale)
+	private fun panelHeight(): Int = HudLayout.scaled(baseHeight(), ConfigHolder.current.hudScale)
 
 	override fun init() {
 		val left = width / 2 - 110
-
-		scaleButton = addRenderableWidget(
-			Button.builder(Component.literal(scaleLabel())) {
-				changeScale(SCALE_STEP)
-			}.bounds(left, height - 52, 105, 20).build()
-		)
 		addRenderableWidget(
-			Button.builder(Component.literal("Smaller")) {
-				changeScale(-SCALE_STEP)
-			}.bounds(left + 115, height - 52, 105, 20).build()
-		)
-		addRenderableWidget(
-			Button.builder(Component.literal("Reset position")) {
+			Button.builder(Component.literal("Reset")) {
 				ConfigHolder.update { it.copy(hudX = 4, hudY = 4, hudScale = 100) }
-				scaleButton?.message = Component.literal(scaleLabel())
 			}.bounds(left, height - 28, 105, 20).build()
 		)
 		addRenderableWidget(
@@ -70,46 +62,55 @@ class HudPositionScreen(private val parent: Screen?) : Screen(Component.literal(
 		)
 	}
 
-	private fun scaleLabel() = "Bigger  (${ConfigHolder.current.hudScale}%)"
-
-	private fun changeScale(delta: Int) {
-		ConfigHolder.update {
-			it.copy(hudScale = (it.hudScale + delta).coerceIn(ForgeCastConfig.MIN_SCALE, ForgeCastConfig.MAX_SCALE))
-		}
-		scaleButton?.message = Component.literal(scaleLabel())
-	}
-
-	private fun overPanel(x: Double, y: Double): Boolean {
-		val config = ConfigHolder.current
-		return x >= config.hudX && x < config.hudX + panelWidth() &&
-			y >= config.hudY && y < config.hudY + panelHeight()
-	}
-
 	override fun mouseClicked(event: MouseButtonEvent, doubleClick: Boolean): Boolean {
-		if (event.button() == 0 && overPanel(event.x(), event.y())) {
-			dragging = true
-			dragOffsetX = (event.x() - ConfigHolder.current.hudX).toInt()
-			dragOffsetY = (event.y() - ConfigHolder.current.hudY).toInt()
-			return true
+		if (event.button() == 0) {
+			val config = ConfigHolder.current
+			// Handle first: it overlaps the panel's corner, and whichever is
+			// tested first wins that pixel.
+			if (HudLayout.overHandle(config.hudX, config.hudY, panelWidth(), panelHeight(), event.x(), event.y())) {
+				grab = Grab.RESIZING
+				return true
+			}
+			if (HudLayout.overPanel(config.hudX, config.hudY, panelWidth(), panelHeight(), event.x(), event.y())) {
+				grab = Grab.MOVING
+				dragOffsetX = (event.x() - config.hudX).toInt()
+				dragOffsetY = (event.y() - config.hudY).toInt()
+				return true
+			}
 		}
 		return super.mouseClicked(event, doubleClick)
 	}
 
 	override fun mouseDragged(event: MouseButtonEvent, dragX: Double, dragY: Double): Boolean {
-		if (dragging) {
-			// Clamped so the panel can never be dragged fully off screen and
-			// become impossible to grab again.
-			val newX = (event.x() - dragOffsetX).toInt().coerceIn(0, (width - panelWidth()).coerceAtLeast(0))
-			val newY = (event.y() - dragOffsetY).toInt().coerceIn(0, (height - panelHeight()).coerceAtLeast(0))
-			ConfigHolder.update { it.copy(hudX = newX, hudY = newY) }
-			return true
+		val config = ConfigHolder.current
+		when (grab) {
+			Grab.MOVING -> {
+				// Clamped so the panel can never be dragged fully off screen and
+				// become impossible to grab again.
+				val newX = (event.x() - dragOffsetX).toInt().coerceIn(0, (width - panelWidth()).coerceAtLeast(0))
+				val newY = (event.y() - dragOffsetY).toInt().coerceIn(0, (height - panelHeight()).coerceAtLeast(0))
+				ConfigHolder.update { it.copy(hudX = newX, hudY = newY) }
+				return true
+			}
+
+			Grab.RESIZING -> {
+				val percent = HudLayout.scalePercentFromDrag(
+					baseWidth(),
+					baseHeight(),
+					event.x() - config.hudX,
+					event.y() - config.hudY,
+				)
+				ConfigHolder.update { it.copy(hudScale = percent) }
+				return true
+			}
+
+			Grab.NONE -> return super.mouseDragged(event, dragX, dragY)
 		}
-		return super.mouseDragged(event, dragX, dragY)
 	}
 
 	override fun mouseReleased(event: MouseButtonEvent): Boolean {
-		if (dragging) {
-			dragging = false
+		if (grab != Grab.NONE) {
+			grab = Grab.NONE
 			return true
 		}
 		return super.mouseReleased(event)
@@ -124,17 +125,18 @@ class HudPositionScreen(private val parent: Screen?) : Screen(Component.literal(
 		super.extractRenderState(graphics, mouseX, mouseY, partialTick)
 
 		val config = ConfigHolder.current
+		val w = panelWidth()
+		val h = panelHeight()
 
 		// A faint box so the panel is grabbable even when the text is short.
 		graphics.fill(
-			config.hudX, config.hudY,
-			config.hudX + panelWidth(), config.hudY + panelHeight(),
-			if (dragging) 0x60FFFFFF.toInt() else 0x30FFFFFF.toInt(),
+			config.hudX, config.hudY, config.hudX + w, config.hudY + h,
+			if (grab == Grab.MOVING) COLOR_PANEL_ACTIVE else COLOR_PANEL_IDLE,
 		)
 
 		graphics.pose().pushMatrix()
 		graphics.pose().translate(config.hudX.toFloat() + PADDING, config.hudY.toFloat() + PADDING)
-		graphics.pose().scale(scale, scale)
+		graphics.pose().scale(config.hudScale / 100f, config.hudScale / 100f)
 		var y = 0
 		for (line in SAMPLE_ROWS) {
 			graphics.text(font, line, 0, y, 0xFFFFFFFF.toInt())
@@ -142,14 +144,23 @@ class HudPositionScreen(private val parent: Screen?) : Screen(Component.literal(
 		}
 		graphics.pose().popMatrix()
 
+		// The resize handle, drawn last so it sits on top of the panel corner.
+		val handleX = config.hudX + w - HudLayout.HANDLE_SIZE
+		val handleY = config.hudY + h - HudLayout.HANDLE_SIZE
+		graphics.fill(
+			handleX, handleY,
+			handleX + HudLayout.HANDLE_SIZE, handleY + HudLayout.HANDLE_SIZE,
+			if (grab == Grab.RESIZING) COLOR_HANDLE_ACTIVE else COLOR_HANDLE,
+		)
+
 		graphics.centeredText(
 			font,
-			Component.literal("Drag the panel to move it"),
+			Component.literal("Drag the panel to move it - drag the corner to resize"),
 			width / 2, 16, 0xFFFFFFFF.toInt(),
 		)
 		graphics.centeredText(
 			font,
-			Component.literal("Sample values - not your real forge"),
+			Component.literal("Sample values - not your real forge      ${config.hudScale}%"),
 			width / 2, 28, 0xFF808080.toInt(),
 		)
 	}

@@ -9,16 +9,58 @@ enum class ForgeDataCase {
 	TRUNCATED,
 
 	/**
-	 * No section at all, and there are unused rows. Room existed and nothing
-	 * was drawn, so the widget is most likely switched off.
+	 * No widget rows at all. The tab-list widget system is switched off, not
+	 * merely crowded - a different problem with a different fix.
+	 *
+	 * Announced at most ONCE per session. Unlike the others this is a standing
+	 * configuration choice rather than something that comes and goes, so
+	 * repeating it would just be nagging.
+	 */
+	WIDGETS_OFF_ENTIRELY,
+
+	/**
+	 * Widget rows exist but no Forges section, and there are unused rows. Room
+	 * existed and nothing was drawn, so the forge widget is off for this island.
 	 */
 	WIDGET_OFF,
 
 	/**
-	 * No section at all, and every column is full to the last row. The widget
-	 * is probably on but got pushed out entirely.
+	 * Widget rows exist, no Forges section, and every column is full to the last
+	 * row. The widget is probably on but got pushed out entirely.
 	 */
 	PUSHED_OUT,
+}
+
+/**
+ * Decides whether the tab list is showing SkyBlock at all.
+ *
+ * Two independent signals, because either can be missing:
+ *
+ *  - The widget rows carry a "Profile:" line. Reliable, but it IS a widget row,
+ *    so it vanishes exactly when the widgets are switched off - which is the
+ *    case we most want to warn about.
+ *  - The sidebar scoreboard is titled SKYBLOCK. Independent of the widget
+ *    system entirely, so it still answers when the widgets are gone.
+ *
+ * Deliberately conservative: if neither signal is present we say no. A missed
+ * warning costs one message; a false positive spams every lobby.
+ */
+object SkyBlockDetector {
+
+	private const val SCOREBOARD_MARKER = "SKYBLOCK"
+
+	/**
+	 * @param scoreboardTitle the sidebar objective's display name with
+	 *   formatting already stripped, or null when there is no sidebar.
+	 */
+	fun isSkyBlock(rows: List<TabRow>, scoreboardTitle: String?): Boolean {
+		if (ProfileReader.profileOf(rows) != null) return true
+
+		val title = scoreboardTitle ?: return false
+		// Hypixel decorates the title, so match loosely on the word rather than
+		// demanding an exact string.
+		return title.uppercase().replace(" ", "").contains(SCOREBOARD_MARKER)
+	}
 }
 
 /**
@@ -50,10 +92,11 @@ object ForgeAdvice {
 				ForgeDataCase.TRUNCATED
 			}
 		}
-		// No widget rows at all means the whole widget system is off, not that
-		// the columns are full. Reporting "pushed out" here would send the
-		// player looking for a crowding problem that does not exist.
-		if (rows.none { it.profileName.startsWith("!") }) return ForgeDataCase.WIDGET_OFF
+
+		// No widget rows at all is a different problem from a crowded tab list.
+		// Reporting "pushed out" here would send the player looking for a
+		// crowding problem that does not exist.
+		if (rows.none { it.profileName.startsWith("!") }) return ForgeDataCase.WIDGETS_OFF_ENTIRELY
 
 		// No section. Was there room for one?
 		return if (spareRows(rows) > 0) ForgeDataCase.WIDGET_OFF else ForgeDataCase.PUSHED_OUT
@@ -96,6 +139,12 @@ object ForgeAdvice {
 			PATH_WRAPPING,
 		)
 
+		ForgeDataCase.WIDGETS_OFF_ENTIRELY -> listOf(
+			"The tab-list widgets are switched off, so the forge cannot be read.",
+			"Switch them on:",
+			PATH_ENABLE,
+		)
+
 		ForgeDataCase.WIDGET_OFF -> listOf(
 			"No Forge widget in the tab list here, and there is room for one.",
 			"Switch it on:",
@@ -108,6 +157,23 @@ object ForgeAdvice {
 			PATH_WRAPPING,
 		)
 	}
+
+	/** One short line for the settings screen. Null when there is no problem. */
+	fun summary(case: ForgeDataCase, renderedSlots: Int): String? = when (case) {
+		ForgeDataCase.COMPLETE -> null
+		ForgeDataCase.TRUNCATED ->
+			"Forge data incomplete - only $renderedSlots of ${ForgeParser.EXPECTED_SLOT_COUNT} slots visible"
+		ForgeDataCase.WIDGETS_OFF_ENTIRELY -> "Forge data unavailable - tab-list widgets are off"
+		ForgeDataCase.WIDGET_OFF -> "Forge data unavailable - the Forge widget is off here"
+		ForgeDataCase.PUSHED_OUT -> "Forge data unavailable - the tab list is full"
+	}
+
+	/** The one-line fix for a case, for the settings screen. */
+	fun fixPath(case: ForgeDataCase): String? = when (case) {
+		ForgeDataCase.COMPLETE -> null
+		ForgeDataCase.TRUNCATED, ForgeDataCase.PUSHED_OUT -> PATH_WRAPPING
+		ForgeDataCase.WIDGETS_OFF_ENTIRELY, ForgeDataCase.WIDGET_OFF -> PATH_ENABLE
+	}
 }
 
 /**
@@ -115,15 +181,30 @@ object ForgeAdvice {
  *
  * Throttling is by CHANGE, not by clock. A message fires only when the case
  * differs from the one last announced, which gives once-per-case for free and
- * re-arms by itself when the situation is fixed and then breaks again. There
- * is no cooldown to tune and no timer that can drift.
+ * re-arms by itself when the situation is fixed and then breaks again.
+ *
+ * [ONE_SHOT_CASES] are the exception: a standing configuration choice rather
+ * than a passing condition, so they are said once per session and then never
+ * again, even after a [reset].
  */
 class AdviceThrottle {
 
+	private companion object {
+		val ONE_SHOT_CASES = setOf(ForgeDataCase.WIDGETS_OFF_ENTIRELY)
+	}
+
 	private var lastAnnounced: ForgeDataCase? = null
+	private val alreadySaidThisSession = mutableSetOf<ForgeDataCase>()
 
 	/** The case to announce now, or null to stay quiet. */
 	fun announce(case: ForgeDataCase): ForgeDataCase? {
+		if (case in ONE_SHOT_CASES) {
+			// add() returns false when it was already there.
+			if (!alreadySaidThisSession.add(case)) return null
+			lastAnnounced = case
+			return case
+		}
+
 		if (case == lastAnnounced) return null
 		lastAnnounced = case
 		// COMPLETE is recorded so that a later problem re-announces, but it is
@@ -131,7 +212,12 @@ class AdviceThrottle {
 		return if (case == ForgeDataCase.COMPLETE) null else case
 	}
 
-	/** Called when leaving SkyBlock, so returning re-announces honestly. */
+	/**
+	 * Called when leaving SkyBlock, so returning re-announces honestly.
+	 *
+	 * Deliberately does NOT clear the one-shot record: "once per session" has
+	 * to survive walking through a lobby.
+	 */
 	fun reset() {
 		lastAnnounced = null
 	}
