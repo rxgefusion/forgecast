@@ -46,8 +46,6 @@ object ForgeHud : HudElement {
 	private const val COLOR_NOT_VISIBLE = 0xFF4A4A4A.toInt()
 	private const val COLOR_LOCKED = 0xFF8A6A6A.toInt()
 
-	private val memory = ForgeMemory()
-
 	/** The reading we last built from, so we rebuild only on a new one. */
 	private var lastGeneration = -1L
 
@@ -104,7 +102,7 @@ object ForgeHud : HudElement {
 			return
 		}
 
-		cached = memory.update(snapshot, TabListSource.profile, Instant.now())
+		cached = ForgeStore.memory.update(snapshot, TabListSource.profile, Instant.now())
 	}
 
 	/**

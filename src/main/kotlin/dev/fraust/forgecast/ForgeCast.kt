@@ -22,6 +22,7 @@ import net.minecraft.world.item.TooltipFlag
 import net.minecraft.world.scores.DisplaySlot
 import org.slf4j.LoggerFactory
 import java.io.File
+import java.time.Instant
 import java.time.LocalDateTime
 import java.time.format.DateTimeFormatter
 import java.util.Optional
@@ -103,10 +104,77 @@ object ForgeCast : ClientModInitializer {
 			noticeWorldChange(client, now)
 			TabListSource.refreshIfDue(client, now)
 			captureOpenGui(client)
+			readForgeScreen(client, now)
 			checkForgeAdvice(client, now)
 		}
 
 		logger.info("ForgeCast ready - /forgecast opens settings")
+	}
+
+	// ------------------------------------------------ reading the Forge screen
+
+	/** The Forge screen's title, once formatting is stripped. */
+	private const val FORGE_SCREEN_TITLE = "The Forge"
+
+	/** GUI slots 10..16 hold forge slots 1..7. Nothing else is read. */
+	private val FORGE_GUI_SLOTS = GuiForgeParser.FIRST_FORGE_GUI_SLOT until
+		(GuiForgeParser.FIRST_FORGE_GUI_SLOT + ForgeParser.EXPECTED_SLOT_COUNT)
+
+	private const val FORGE_READ_INTERVAL_MS = 1_000L
+	private var lastForgeReadMs = 0L
+
+	/**
+	 * Records the open Forge screen into memory. Changes nothing on screen.
+	 *
+	 * Deliberately NOT the dev-tool capture, which is gated off by default and
+	 * walked every slot of EVERY open screen twice a second - the prime suspect
+	 * for the loading stutter. This is a narrow hook by comparison:
+	 *
+	 *  - a type check and one string compare per tick, and nothing else unless
+	 *    the Forge itself is open;
+	 *  - at most once per second;
+	 *  - seven tooltips rather than ninety, because only slots 10-16 matter.
+	 *
+	 * Roughly twenty-six times less work than the dev tool did, and none at all
+	 * while the Forge is closed.
+	 */
+	private fun readForgeScreen(client: Minecraft, now: Long) {
+		val screen = client.screen
+		if (screen !is AbstractContainerScreen<*>) return
+		if (!ForgeParser.stripFormatting(toLegacyString(screen.title)).trim()
+				.equals(FORGE_SCREEN_TITLE, ignoreCase = true)
+		) {
+			return
+		}
+
+		if (now - lastForgeReadMs < FORGE_READ_INTERVAL_MS) return
+		lastForgeReadMs = now
+
+		val level = client.level ?: return
+		val player = client.player ?: return
+		val tooltipContext = Item.TooltipContext.of(level)
+
+		val slots = screen.menu.slots
+		val rows = mutableListOf<GuiSlotRow>()
+		for (index in FORGE_GUI_SLOTS) {
+			val slot = slots.getOrNull(index) ?: continue
+			val stack = slot.item
+			if (stack.isEmpty) continue
+			val tooltip = runCatching {
+				stack.getTooltipLines(tooltipContext, player, TooltipFlag.NORMAL).map { toLegacyString(it) }
+			}.getOrElse { emptyList() }
+			rows += GuiSlotRow(index, stack.count, toLegacyString(stack.hoverName), tooltip)
+		}
+		if (rows.isEmpty()) return
+
+		val observedAt = Instant.now()
+		ForgeStore.memory.recordGuiObservation(
+			GuiForgeParser.parse(rows, observedAt),
+			// The Forge screen does not say which profile it belongs to, so the
+			// profile comes from the tab list. Null there means nothing is stored.
+			TabListSource.profile,
+			observedAt,
+		)
 	}
 
 	// ------------------------------------------------- incomplete-data advice
@@ -308,7 +376,72 @@ object ForgeCast : ClientModInitializer {
 				i++
 			}
 		}
+
+		printStoredObservations(source)
 		return 1
+	}
+
+	/**
+	 * Dumps what memory holds, per slot and per sensor.
+	 *
+	 * This is how the GUI plumbing gets verified without changing anything on
+	 * screen: open the Forge, walk away, and check the mod still knows the exact
+	 * finish times it read there.
+	 */
+	private fun printStoredObservations(source: FabricClientCommandSource) {
+		val stored = ForgeStore.memory.storedObservations()
+		if (stored.isEmpty()) return
+
+		source.sendFeedback(
+			prefix().append(
+				Component.literal("stored readings (widget = rounded, GUI = exact):")
+					.withStyle(ChatFormatting.DARK_GRAY)
+			)
+		)
+
+		val now = Instant.now()
+		for (entry in stored) {
+			val line = prefix()
+				.append(Component.literal("  ${entry.slot}) ").withStyle(ChatFormatting.GRAY))
+				.append(
+					Component.literal(
+						if (entry.source == ObservationSource.GUI) "GUI    " else "widget ",
+					).withStyle(
+						if (entry.source == ObservationSource.GUI) ChatFormatting.AQUA
+						else ChatFormatting.DARK_AQUA,
+					)
+				)
+				.append(
+					Component.literal("${entry.state} ").withStyle(ChatFormatting.WHITE)
+				)
+
+			entry.itemName?.let {
+				line.append(Component.literal("$it ").withStyle(ChatFormatting.GRAY))
+			}
+
+			line.append(
+				Component.literal(
+					entry.finishAt?.let { "finishes ${describeGap(it, now)} " } ?: "",
+				).withStyle(ChatFormatting.GREEN)
+			)
+			line.append(
+				Component.literal("seen ${describeGap(entry.observedAt, now)}")
+					.withStyle(ChatFormatting.DARK_GRAY)
+			)
+			source.sendFeedback(line)
+		}
+	}
+
+	/** "in 8h 46m" or "3m ago", whichever side of now the instant falls. */
+	private fun describeGap(instant: Instant, now: Instant): String {
+		val seconds = (instant.toEpochMilli() - now.toEpochMilli()) / 1000
+		val magnitude = kotlin.math.abs(seconds)
+		val text = when {
+			magnitude < 60 -> "${magnitude}s"
+			magnitude < 3600 -> "${magnitude / 60}m ${magnitude % 60}s"
+			else -> "${magnitude / 3600}h ${(magnitude % 3600) / 60}m"
+		}
+		return if (seconds >= 0) "in $text" else "$text ago"
 	}
 
 	/**

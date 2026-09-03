@@ -5,6 +5,33 @@ import kotlin.time.Duration
 import kotlin.time.Duration.Companion.hours
 import kotlin.time.Duration.Companion.milliseconds
 
+/**
+ * Which sensor a stored reading came from.
+ *
+ * Two sensors watch the same seven slots and they are not equivalent:
+ *
+ *  - [WIDGET] is available constantly and anywhere, but rounds to one unit
+ *    ("6h") and truncates when the tab list runs out of rows.
+ *  - [GUI] is exact to the second and always shows all seven, but can only be
+ *    read while the Forge screen is open.
+ *
+ * Recorded so that the arbitration step - not yet written - can decide what to
+ * believe when the two disagree. It cannot make that judgement without knowing
+ * which sensor said what.
+ */
+enum class ObservationSource { WIDGET, GUI }
+
+/** A stored reading, exposed for inspection by /forgecast status. */
+data class StoredObservation(
+	val slot: Int,
+	val source: ObservationSource,
+	val state: ForgeSlotState,
+	val itemName: String? = null,
+	/** Absolute finish time. Null for states that are not counting down. */
+	val finishAt: java.time.Instant? = null,
+	val observedAt: java.time.Instant,
+)
+
 /** Where a displayed slot's information came from. */
 enum class SlotSource {
 	/** Read from the tab list just now. */
@@ -89,7 +116,23 @@ class ForgeMemory(
 	)
 
 	private var profile: String? = null
+
+	/** Widget readings. Drives the display, exactly as before. */
 	private val remembered = mutableMapOf<Int, Remembered>()
+
+	/**
+	 * GUI readings, kept SEPARATELY from the widget ones.
+	 *
+	 * Nothing reads this for display yet. Storing both rather than merging them
+	 * is deliberate: the arbitration step decides what to believe when the two
+	 * disagree, and it cannot do that if one has already overwritten the other.
+	 *
+	 * These do not expire. The widget's six-hour limit exists because a rounded
+	 * reading decays; an absolute finish time taken from the GUI does not.
+	 * Whether they should expire for some other reason is an arbitration
+	 * question, deferred with the rest of it.
+	 */
+	private val guiObservations = mutableMapOf<Int, Remembered>()
 
 	/** The profile the current memories belong to. */
 	val knownProfile: String? get() = profile
@@ -130,9 +173,78 @@ class ForgeMemory(
 		return snapshot.slots.map { display(it, now) }
 	}
 
+	/**
+	 * Records a reading of the open Forge screen.
+	 *
+	 * Changes nothing that is displayed. The GUI store sits beside the widget
+	 * store; merging them is the next step's job.
+	 *
+	 * @param profileName taken from the tab list, because the Forge screen does
+	 *   not say which profile it belongs to. Null means we cannot tell, and
+	 *   nothing is stored - the same rule the widget path already follows, since
+	 *   attributing one profile's forge to another would be worse than storing
+	 *   nothing.
+	 */
+	fun recordGuiObservation(
+		snapshot: GuiForgeSnapshot,
+		profileName: String?,
+		now: java.time.Instant,
+	) {
+		if (profileName == null) return
+
+		if (profileName != profile) {
+			// Different profile, different forge. Both stores start again.
+			remembered.clear()
+			guiObservations.clear()
+			profile = profileName
+		}
+
+		for (slot in snapshot.slots) {
+			// A slot the GUI parser itself flagged as suspect is not worth
+			// storing: it already said it does not trust the reading.
+			if (!isUnderstood(slot)) continue
+
+			guiObservations[slot.slot] = Remembered(
+				state = slot.state,
+				itemName = slot.itemName,
+				// Absolute at the moment of observation. A duration goes stale
+				// immediately; an instant never does.
+				finishAt = slot.remaining?.let { now.plusMillis(it.inWholeMilliseconds) },
+				observedAt = slot.observedAt ?: now,
+			)
+		}
+	}
+
+	/**
+	 * Everything currently stored, from both sensors.
+	 *
+	 * Exists so /forgecast status can show what the mod knows without any
+	 * display change - which is how this step gets verified at all.
+	 */
+	fun storedObservations(): List<StoredObservation> {
+		val all = mutableListOf<StoredObservation>()
+		for ((slot, value) in remembered) {
+			all += StoredObservation(
+				slot, ObservationSource.WIDGET, value.state,
+				value.itemName, value.finishAt, value.observedAt,
+			)
+		}
+		for ((slot, value) in guiObservations) {
+			all += StoredObservation(
+				slot, ObservationSource.GUI, value.state,
+				value.itemName, value.finishAt, value.observedAt,
+			)
+		}
+		return all.sortedWith(compareBy({ it.slot }, { it.source }))
+	}
+
+	/** How many GUI readings are held. For tests and diagnostics. */
+	val guiSize: Int get() = guiObservations.size
+
 	/** Forgets everything, keeping no profile. */
 	fun clear() {
 		remembered.clear()
+		guiObservations.clear()
 		profile = null
 	}
 
