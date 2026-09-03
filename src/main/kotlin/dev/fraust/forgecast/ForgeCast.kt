@@ -97,8 +97,13 @@ object ForgeCast : ClientModInitializer {
 		// be typed while one is open. Capture on a tick instead; the command
 		// then writes whatever was last seen.
 		ClientTickEvents.END_CLIENT_TICK.register { client ->
+			val now = System.currentTimeMillis()
+			// Order matters: notice a transition, then take the single reading
+			// of the tab list that both the panel and the advice will use.
+			noticeWorldChange(client, now)
+			TabListSource.refreshIfDue(client, now)
 			captureOpenGui(client)
-			checkForgeAdvice(client)
+			checkForgeAdvice(client, now)
 		}
 
 		logger.info("ForgeCast ready - /forgecast opens settings")
@@ -107,8 +112,41 @@ object ForgeCast : ClientModInitializer {
 	// ------------------------------------------------- incomplete-data advice
 
 	private val adviceThrottle = AdviceThrottle()
-	private var lastAdviceCheckMs = 0L
-	private const val ADVICE_INTERVAL_MS = 1_000L
+	private val adviceStabiliser = AdviceStabiliser()
+
+	/** Which reading we last classified, so each one is judged exactly once. */
+	private var lastAdviceGeneration = 0L
+
+	/**
+	 * How long to stop classifying after a world or server change.
+	 *
+	 * A transfer takes noticeably longer than an ordinary warp, and during it
+	 * the tab list is rebuilt from nothing. Rather than stretch the streak
+	 * requirement to cover the worst case, the two mechanisms are stacked: this
+	 * window covers a known-bad period, the streak covers ordinary noise.
+	 */
+	private const val TRANSITION_GRACE_MS = 5_000L
+
+	private var lastLevel: Any? = null
+	private var suppressUntilMs = 0L
+
+	/**
+	 * Starts a quiet period whenever the world instance changes.
+	 *
+	 * The stabiliser is reset so nothing observed after the transition inherits
+	 * a streak from before it. The throttle is deliberately NOT reset: it
+	 * remembers what has already been said, and re-announcing the same problem
+	 * after every warp would be exactly the nagging it exists to prevent.
+	 */
+	private fun noticeWorldChange(client: Minecraft, nowMs: Long) {
+		val level = client.level
+		if (level !== lastLevel) {
+			lastLevel = level
+			suppressUntilMs = nowMs + TRANSITION_GRACE_MS
+			adviceStabiliser.reset()
+			TabListSource.clear()
+		}
+	}
 
 	/**
 	 * Tells the player once when the forge data is incomplete, and how to fix
@@ -116,33 +154,46 @@ object ForgeCast : ClientModInitializer {
 	 *
 	 * Runs independently of the HUD toggle: the reading is either trustworthy
 	 * or it is not, regardless of whether the panel happens to be shown.
+	 *
+	 * Reads the shared [TabListSource] rather than sampling the tab list itself,
+	 * so this can never disagree with what the panel is showing.
 	 */
-	private fun checkForgeAdvice(client: Minecraft) {
+	private fun checkForgeAdvice(client: Minecraft, now: Long) {
 		if (!ConfigHolder.current.adviceEnabled) return
 
-		val now = System.currentTimeMillis()
-		if (now - lastAdviceCheckMs < ADVICE_INTERVAL_MS) return
-		lastAdviceCheckMs = now
+		// Quiet while a transition settles.
+		if (now < suppressUntilMs) return
+
+		// One judgement per reading, no more.
+		val generation = TabListSource.generation
+		if (generation == lastAdviceGeneration) return
+		lastAdviceGeneration = generation
 
 		if (!isOnHypixel(client)) {
 			adviceThrottle.reset()
+			adviceStabiliser.reset()
 			return
 		}
-		val connection = client.connection ?: return
 
-		val rows = readTabRows(connection)
+		val rows = TabListSource.rows
+		val snapshot = TabListSource.snapshot ?: return
 
 		// Two independent SkyBlock signals. The Profile row is itself a widget
 		// row, so it disappears exactly when the widgets are switched off - the
 		// case we most want to warn about. The scoreboard title survives that.
 		if (!SkyBlockDetector.isSkyBlock(rows, sidebarTitle(client))) {
 			adviceThrottle.reset()
+			adviceStabiliser.reset()
 			return
 		}
 
-		val snapshot = ForgeParser.parse(rows)
 		val case = ForgeAdvice.classify(rows, snapshot)
-		val toAnnounce = adviceThrottle.announce(case) ?: return
+
+		// A real problem persists; a half-built tab list does not. Nothing is
+		// announced until the same reading has held for several seconds.
+		val settled = adviceStabiliser.offer(case) ?: return
+
+		val toAnnounce = adviceThrottle.announce(settled) ?: return
 		val lines = ForgeAdvice.message(toAnnounce, snapshot.renderedSlots) ?: return
 
 		val player = client.player ?: return

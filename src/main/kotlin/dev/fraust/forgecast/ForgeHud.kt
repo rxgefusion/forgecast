@@ -24,8 +24,6 @@ import java.time.Instant
  */
 object ForgeHud : HudElement {
 
-	private const val REFRESH_INTERVAL_MS = 1_000L
-
 	private const val LINE_GAP = 1
 
 	/** Extra indent for slots with nothing to show, so they read differently. */
@@ -49,7 +47,8 @@ object ForgeHud : HudElement {
 
 	private val memory = ForgeMemory()
 
-	private var lastRefreshMs = 0L
+	/** The reading we last built from, so we rebuild only on a new one. */
+	private var lastGeneration = -1L
 
 	/**
 	 * The most recent merged view, or null when there is nothing to show.
@@ -79,35 +78,32 @@ object ForgeHud : HudElement {
 			return
 		}
 
-		refreshIfDue(client)
+		refreshFromSharedReading()
 
 		val slots = cached ?: return
 		draw(graphics, client.font, slots)
 	}
 
-	private fun refreshIfDue(client: Minecraft) {
-		val now = System.currentTimeMillis()
-		if (now - lastRefreshMs < REFRESH_INTERVAL_MS) return
-		lastRefreshMs = now
+	/**
+	 * Rebuilds the merged view from the shared reading.
+	 *
+	 * The panel no longer samples the tab list itself. This and the advice check
+	 * consume the SAME reading, so the two can never disagree about what the tab
+	 * list said - which is exactly what produced a warning about a missing
+	 * widget while this panel was showing correct times from a different sample.
+	 */
+	private fun refreshFromSharedReading() {
+		if (TabListSource.generation == lastGeneration) return
+		lastGeneration = TabListSource.generation
 
-		val connection = client.connection
-		if (connection == null) {
-			cached = null
-			return
-		}
-
-		// Reuses the exact live wiring the commands use, so the panel can never
-		// disagree with /forgecast status.
-		val rows = ForgeCast.readTabRows(connection)
-		val snapshot = ForgeParser.parse(rows)
-
+		val snapshot = TabListSource.snapshot
 		// No Forges section here means hide, not freeze.
-		if (!snapshot.foundSection) {
+		if (snapshot == null || !snapshot.foundSection) {
 			cached = null
 			return
 		}
 
-		cached = memory.update(snapshot, ProfileReader.profileOf(rows), Instant.now())
+		cached = memory.update(snapshot, TabListSource.profile, Instant.now())
 	}
 
 	private fun draw(graphics: GuiGraphicsExtractor, font: Font, slots: List<MergedSlot>) {
